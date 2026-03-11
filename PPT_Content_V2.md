@@ -285,7 +285,7 @@ Beyond intelligence, we offer flexible deployment designed for modern cyber thre
     *   Mnih et al. (2015) — Human-level control via DQN (Nature)
     *   Wei et al. (2019) — MARL for traffic signal control (AAAI)
 *   **Project Repositories & Demos (Placeholders):**
-    *   **GitHub Repository:** `[Insert Link to Your GitHub Repo Here]`
+    *   **GitHub Repository:** [https://github.com/SHT4BHARAT/TrafficManagement](https://github.com/SHT4BHARAT/TrafficManagement)
     *   **Detailed Architecture Document:** `[Link to Dynamic_AI_Traffic_Optimizer_Architecture_V2.md]`
 
 ---

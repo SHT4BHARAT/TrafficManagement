@@ -9,18 +9,18 @@ export default function Dashboard() {
   ]);
 
   useEffect(() => {
-    // Mock metric fetching
-    const timer = setInterval(() => {
-      setMetrics({
-        intersection: "INT_001 (Main St & Broadway)",
-        queues: { N: 12, S: 8, E: 24, W: 15 },
-        status: "Active",
-        uptime: "99.98%",
-        reward: "+14.5",
-        mode: "AI Optimized"
-      });
-    }, 2000);
-    return () => clearInterval(timer);
+    // Real-time WebSocket connection
+    const socket = new WebSocket("ws://localhost:8000/ws");
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setMetrics(data);
+    };
+
+    socket.onopen = () => console.log("[WS] Dashboard connected to backend");
+    socket.onclose = () => console.log("[WS] Dashboard disconnected");
+
+    return () => socket.close();
   }, []);
 
   const handleSend = () => {
