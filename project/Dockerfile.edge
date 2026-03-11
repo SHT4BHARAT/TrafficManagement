@@ -1,0 +1,14 @@
+# [Dockerfile.edge] Base Image for Edge AI Nodes
+FROM python:3.9-slim
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# In a real Jetson, we would pull from nvcr.io/nvidia/deepstream
+# and install TensorRT. For emulation, we use standard Python.
+COPY edge/vision_node.py .
+COPY core/data_bus.py .
+COPY core/config.py .
+
+CMD ["python", "vision_node.py"]

@@ -32,8 +32,8 @@
 
 *   **The Proposed Approach:**
     *   **Active, Heuristic Management:** Transitioning from static timers to a centralized AI Decision Engine that dynamically adjusts traffic signals based on live density.
-    *   **Intelligent Edge Processing:** Utilizing on-site computer vision (NVIDIA Jetson AGX Orin) to locally extract vehicle metadata, solving latency and ensuring X.509 mTLS hardware authentication.
-    *   **Air-Gapped Headquarters LLM:** An offline, locally hosted Large Language Model (e.g., Llama 3) acts as an intelligent assistant for human operators, executing complex traffic queries even during total internet blackouts.
+    *   **Intelligent Edge Processing:** Utilizing locally extracted vehicle metadata via NVIDIA Jetson or dedicated Edge Emulators.
+    *   **Digital Twin Simulation:** Leveraging a high-fidelity virtual city grid for crash-testing RL models before live actuation.
 *   **How It Solves The Problem (Innovation & Impact):**
     *   **Reinforcement Learning Control:** MADDPG/PPO networks learn and optimize signal phasing to maximize intersection throughput, including a "Recovery Phase" post-emergency.
     *   **Multi-Modal Green Corridor:** Ingests live ambulance GPS (MQTT), calculates the fastest route (A* Graph Search), and visually verifies passage using Edge Cameras (YOLOv8) before releasing the intersection.
@@ -241,7 +241,25 @@ Beyond intelligence, we offer flexible deployment designed for modern cyber thre
 
 ---
 
-## Slide 7: Implementation Roadmap
+## Slide 6a: Metro-Scale Readiness & Hardware Abstraction
+**Title:** Scaling to 10M+ Cities: The "Digital Twin" Emulation Layer
+
+**Key Points (Bullet Format for Slide):**
+
+*   **Solving the Hardware Gap:**
+    *   **Heterogeneous Edge Support:** Our system isn't locked to physical Jetsons. It utilizes a **Hardware Abstraction Layer (HAL)** that allows it to run on Cloud-Edge, standard x86 PCs, or dedicated NVIDIA hardware.
+    *   **Distributed Emulation:** Using **Docker Compose**, we can simulate an entire city grid (50+ intersections) on a single workstation to validate the AI Brain before field deployment.
+*   **Metro-Scale Engineering:**
+    *   **Data Bandwidth Management:** Processes 99% of vision data at the edge; only compressed metadata (Protobuf) travels the city network.
+    *   **Graph-Chain Optimization:** Uses Neo4j to treat the city as a single living organism—offsetting a jam in one district by preemptively clearing corridors in another.
+*   **The Digital Twin Advantage:**
+    *   We use a **High-Fidelity Virtual Twin** (Python/SUMO) to stress-test the Reinforcement Learning models against 100 years of traffic patterns in just 24 hours of compute.
+
+---
+**Speaker Notes (What you should say):**
+"One common question is: 'What if you don't have 5,000 physical Jetson Orins on day one?' Our architecture solves this through a robust Hardware Abstraction Layer. We can deploy on existing city PCs or cloud-edge nodes while we roll out dedicated hardware. To prove this, we built a 'Digital Twin' emulation environment using Docker. This allows us to simulate a 10-million-person city on a single workstation, training our AI on a hundred years of traffic scenarios before it ever touches a real traffic light. Our system isn't just a prototype; it's a scalable methodology for the modern megacity."
+
+---
 **Title:** Path to Scale: From Simulation to City-Wide Grid
 
 **Roadmap Phases:**

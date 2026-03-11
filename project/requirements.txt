@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+pydantic
+requests
+json
+asyncio
+random
+time
+uuid
+# confluent-kafka # Uncomment for production redpanda
+# ray[rllib] # Uncomment for production RL
+# neo4j # Uncomment for production graph

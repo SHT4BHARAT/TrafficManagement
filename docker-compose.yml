@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  # 1. Edge Ingestion Layer (Simulated Intersection 1)
+  edge-intersection-001:
+    build:
+      context: ./project
+      dockerfile: Dockerfile.edge
+    environment:
+      - INTERSECTION_ID=INT_001
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      - kafka
+
+  # 2. Data Orchestration Layer
+  kafka:
+    image: vectorized/redpanda:latest
+    ports:
+      - "9092:9092"
+    command:
+      - redpanda start
+      - --overprovisioned
+      - --smp 1
+      - --memory 1G
+      - --reserve-memory 0M
+      - --node-id 0
+      - --check=false
+
+  # 3. AI Brain (The Optimizer & Graph Router)
+  brain-optimizer:
+    build:
+      context: ./project
+      dockerfile: Dockerfile.brain
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      - kafka
+
+  # 4. City Operator Dashboard (Frontend)
+  dashboard-ui:
+    build:
+      context: ./project/ui/dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend-api:8000
+
+  # 5. Backend API Gateway
+  backend-api:
+    build:
+      context: ./project
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    depends_on:
+      - kafka

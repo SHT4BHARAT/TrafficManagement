@@ -1,0 +1,11 @@
+# [Dockerfile.brain] Base Image for AI Brain
+FROM python:3.9-slim
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY brain/ optimizer.py llm_assistant.py routing.py ./
+COPY core/ data_bus.py config.py ./
+
+CMD ["python", "optimizer.py"]
