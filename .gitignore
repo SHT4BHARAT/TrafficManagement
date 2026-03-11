@@ -1,0 +1,29 @@
+# Presentation / Extraction Artifacts
+*.pptx
+extract.md
+extracted_text.txt
+extract_output.txt
+extract.py
+slide2
+final.pdf
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+venv/
+.venv/
+env/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+.DS_Store
+
+# Local App Data
+.gemini/
+.agents/
+brain/
