@@ -70,20 +70,34 @@ export default function Dashboard() {
         <div className="viz-panel glass-panel">
           <div className="viz-header">
             <h3>Live Lane Analytics</h3>
-            <div className="pulse-icon"></div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Real-time Stream</span>
+              <div className="pulse-icon"></div>
+            </div>
           </div>
-          <div className="viz-placeholder">
-            {/* Simulation boxes */}
+          <div className="viz-container">
             {metrics && Object.entries(metrics.queues).map(([key, val]) => (
-              <div key={key} className="lane-bar">
-                <span className="lane-label">{key}</span>
-                <div className="bar-bg">
-                  <div 
-                    className="bar-fill" 
-                    style={{ width: `${(val / 30) * 100}%`, background: val > 20 ? 'var(--danger)' : 'var(--primary)' }}
-                  ></div>
+              <div key={key} className="lane-analytics-row">
+                <div className="lane-info">
+                  <span className="lane-label">ZONE {key}</span>
+                  <span className={`lane-status ${val > 20 ? 'alert' : 'optimal'}`}>
+                    {val > 20 ? '!! CONGESTED' : 'OPTIMAL'}
+                  </span>
                 </div>
-                <span className="lane-val">{val}</span>
+                <div className="bar-wrapper">
+                  <div className="bar-bg">
+                    <div 
+                      className="bar-fill" 
+                      style={{ 
+                        width: `${Math.min((val / 30) * 100, 100)}%`, 
+                        background: val > 20 ? 'linear-gradient(90deg, #ff4b2b, #ff416c)' : 'linear-gradient(90deg, #00f2fe, #4facfe)' 
+                      }}
+                    >
+                      <div className="bar-shimmer"></div>
+                    </div>
+                  </div>
+                  <span className="lane-val">{val} <small>vph</small></span>
+                </div>
               </div>
             ))}
           </div>
@@ -177,87 +191,145 @@ export default function Dashboard() {
           min-height: 400px;
         }
 
-        .viz-header {
-          display: flex;
-          justify-content: space-between;
-          margin-bottom: 32px;
-        }
-
-        .lane-bar {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          margin-bottom: 16px;
-        }
-
-        .lane-label { width: 20px; font-weight: 600; }
-        .bar-bg { flex: 1; height: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; overflow: hidden; }
-        .bar-fill { height: 100%; transition: width 0.5s ease-out; }
-
-        .chat-panel {
-          padding: 24px;
+        .viz-container {
           display: flex;
           flex-direction: column;
-          height: 100%;
+          gap: 20px;
         }
 
-        .chat-history {
-          flex: 1;
-          overflow-y: auto;
-          margin: 16px 0;
+        .lane-analytics-row {
           display: flex;
           flex-direction: column;
           gap: 12px;
         }
 
-        .chat-bubble {
-          padding: 12px;
-          border-radius: 12px;
-          font-size: 0.9rem;
-          line-height: 1.4;
+        .lane-info {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
         }
 
-        .chat-bubble.assistant {
-          background: rgba(0, 242, 254, 0.05);
-          border-left: 3px solid var(--primary);
-        }
-
-        .chat-bubble.user {
-          background: rgba(255, 255, 255, 0.05);
-          align-self: flex-end;
-          border-right: 3px solid var(--text-secondary);
-        }
-
-        .role-tag {
+        .lane-label {
           font-size: 0.7rem;
+          font-weight: 800;
+          color: var(--text-secondary);
+          letter-spacing: 1px;
+        }
+
+        .lane-status {
+          font-size: 0.65rem;
           font-weight: 700;
-          display: block;
-          margin-bottom: 4px;
-          opacity: 0.5;
+          padding: 2px 8px;
+          border-radius: 4px;
+        }
+
+        .lane-status.optimal {
+          background: rgba(0, 242, 254, 0.1);
+          color: var(--primary);
+        }
+
+        .lane-status.alert {
+          background: rgba(255, 75, 43, 0.1);
+          color: #ff4b2b;
+          animation: blink 1s infinite;
+        }
+
+        .bar-wrapper {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+
+        .bar-bg {
+          flex: 1;
+          height: 8px;
+          background: rgba(255, 255, 255, 0.03);
+          border-radius: 4px;
+          overflow: hidden;
+          position: relative;
+        }
+
+        .bar-fill {
+          height: 100%;
+          border-radius: 4px;
+          transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+          position: relative;
+        }
+
+        .bar-shimmer {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 50%;
+          height: 100%;
+          background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(255, 255, 255, 0.2),
+            transparent
+          );
+          animation: shimmer 2s infinite;
+        }
+
+        .lane-val {
+          font-size: 1rem;
+          font-weight: 700;
+          min-width: 60px;
+          text-align: right;
+        }
+
+        .lane-val small {
+          font-size: 0.6rem;
+          opacity: 0.4;
+          margin-left: 2px;
+        }
+
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(200%); }
+        }
+
+        @keyframes blink {
+          50% { opacity: 0.5; }
         }
 
         .chat-input-area {
+          margin-top: auto;
           display: flex;
           gap: 12px;
         }
 
         input {
           flex: 1;
-          background: rgba(255,255,255,0.05);
+          background: rgba(255, 255, 255, 0.05);
           border: 1px solid var(--glass-border);
-          padding: 10px 16px;
-          border-radius: 8px;
+          padding: 12px 18px;
+          border-radius: 12px;
           color: white;
           outline: none;
+          transition: all 0.3s;
         }
 
-        .pulse-icon {
-          width: 12px;
-          height: 12px;
-          background: var(--success);
-          border-radius: 50%;
-          box-shadow: 0 0 10px var(--success);
-          animation: pulse 2s infinite;
+        input:focus {
+          border-color: var(--primary);
+          background: rgba(255, 255, 255, 0.08);
+          box-shadow: 0 0 15px rgba(0, 242, 254, 0.1);
+        }
+
+        .btn-primary {
+          background: linear-gradient(135deg, var(--primary), #4facfe);
+          border: none;
+          padding: 0 24px;
+          border-radius: 12px;
+          color: white;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.3s;
+        }
+
+        .btn-primary:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 5px 15px rgba(0, 242, 254, 0.3);
         }
 
         @keyframes pulse {

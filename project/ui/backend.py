@@ -6,7 +6,10 @@ import json
 import asyncio
 import random
 
+from brain.llm_assistant import HQAssistantLLM
+
 app = FastAPI(title="DAITFO Dashboard API")
+assistant = HQAssistantLLM()
 
 # Connection Manager for WebSockets
 class ConnectionManager:
@@ -74,8 +77,13 @@ async def get_metrics():
 
 @app.post("/api/ask")
 async def ask_assistant(request: QueryRequest):
+    # Simulated live state from the "Hot Store"
+    mock_live_state = {"N": 12, "S": 8, "E": 24, "W": 15}
+    
+    response = assistant.query_system(request.query, live_state=mock_live_state)
+    
     return {
-        "answer": f"Simulated Assistant: I've processed your query '{request.query}'. System state is stable.",
+        "answer": response,
         "timestamp": time.time()
     }
 
