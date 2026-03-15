@@ -3,13 +3,13 @@ import sys
 import os
 
 # Add the project root to sys.path for proper module resolution
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from project.edge.vision_node import simulate_edge_vision
-from project.brain.optimizer import TrafficRLAgent
-from project.brain.llm_assistant import HQAssistantLLM
-from project.brain.routing import CityGraphRouter
-from project.simulation.traffic_sim import IntersectionSimulator
+from edge.vision_node import simulate_edge_vision
+from brain.optimizer import TrafficRLAgent
+from brain.llm_assistant import HQAssistantLLM
+from brain.routing import CityGraphRouter
+from simulation.traffic_sim import IntersectionSimulator
 
 def start_system():
     """
@@ -54,8 +54,11 @@ def start_system():
                 print("\n[ALERT] Emergency Responder Ping Detected!")
                 start_node, end_node = "INT_005", "INT_004"
                 path, time_val = router.find_emergency_path(start_node, end_node)
-                print(f"[ROUTING] Fastest Route: {path} ({time_val}s)")
-                router.trigger_green_corridor(path)
+                if path:
+                    print(f"[ROUTING] Fastest Route: {path} ({time_val}s)")
+                    router.trigger_green_corridor(path)
+                else:
+                    print(f"[ROUTING] ERROR: No valid path found between {start_node} and {end_node}")
             
             # 7. Opportunity for LLM Query (Simulation)
             if i % 8 == 0:

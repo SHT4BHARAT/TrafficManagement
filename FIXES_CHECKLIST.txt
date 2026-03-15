@@ -1,0 +1,168 @@
+================================================================================
+                    DAITFO LOGICAL ERRORS - FIXES CHECKLIST
+================================================================================
+
+CRITICAL ERRORS (Must Fix):
+[✓] 1. Missing SCOOTController error handling (backend.py)
+    Status: FIXED
+    Location: ui/backend.py lines 36-42
+    Action: Added try/except wrapper with fallback to None
+    Impact: Backend won't crash on SCOOT initialization failure
+
+[✓] 2. Race condition on pending_duration (backend.py)
+    Status: FIXED
+    Location: ui/backend.py lines 90, 156, 394
+    Action: Added threading.Lock for thread-safe access
+    Impact: AI inference results now properly synchronized
+
+================================================================================
+
+HIGH SEVERITY ERRORS (Important):
+[✓] 3. Inconsistent state format in RL optimizer (optimizer.py)
+    Status: FIXED
+    Location: brain/optimizer.py lines 12-46
+    Action: Created _normalize_state() helper method
+    Impact: Agent behavior is now predictable and consistent
+
+================================================================================
+
+MEDIUM SEVERITY ERRORS (Should Fix):
+[✓] 4. Unreachable path not handled (main.py)
+    Status: FIXED
+    Location: main.py lines 57-61
+    Action: Added None check before trigger_green_corridor()
+    Impact: No more nonsensical routing output
+
+[✓] 5. LLM error status not checked (backend.py)
+    Status: FIXED
+    Location: ui/backend.py lines 513-518
+    Action: Added error status validation using safe_json_parse()
+    Impact: Error responses properly distinguished from valid answers
+
+[✓] 6. Unbounded event log growth (backend.py)
+    Status: FIXED
+    Location: ui/backend.py line 100
+    Action: Changed to deque(maxlen=1000)
+    Impact: No memory leak, maintains audit trail of last 1000 events
+
+[✓] 7. Inconsistent zone detection (backend.py)
+    Status: FIXED
+    Location: ui/backend.py line 484
+    Action: Using detect_emergency_zone() with regex word boundaries
+    Impact: No false positive emergency triggers from substring matches
+
+[✓] 8. Phase index validation too late (backend.py)
+    Status: FIXED
+    Location: ui/backend.py lines 303-318
+    Action: Validate BEFORE assignment instead of after
+    Impact: No silent corruption of phase state
+
+[✓] 9. .gitignore blocks brain/ directory (root/.gitignore)
+    Status: FIXED
+    Location: .gitignore lines 29-33
+    Action: Removed brain/ from gitignore, added specific cache exclusions
+    Impact: Brain modules properly version controlled
+
+[✓] 10. Mock dependency in production (llm_assistant.py)
+    Status: FIXED
+    Location: brain/llm_assistant.py lines 14-18, 56-68
+    Action: Moved TomTom import to module level with graceful fallback
+    Impact: Explicit error logging for missing dependencies
+
+[✓] 11. JSON parsing too permissive (multiple files)
+    Status: FIXED
+    Location: core/utils.py (NEW), ui/backend.py line 369, brain/llm_assistant.py line 101
+    Action: Created safe_json_parse() and extract_json_from_text() utilities
+    Impact: Consistent, strict JSON parsing across codebase
+
+[✓] 12. Average wait calculation fragile (backend.py)
+    Status: FIXED
+    Location: ui/backend.py lines 199-201
+    Action: Changed divisor to max(1, len(red_lanes))
+    Impact: Safe edge case handling for average calculations
+
+================================================================================
+
+NEW FILES CREATED:
+[✓] core/utils.py
+    Contains:
+    - safe_json_parse(raw_text, default_value=None)
+    - extract_json_from_text(raw_text, default_value=None)
+    - detect_emergency_zone(query_text, default_zone="E")
+
+================================================================================
+
+FILES MODIFIED:
+[✓] project/brain/optimizer.py
+    Changes: Added _normalize_state() helper, updated compute_reward() and compute_action()
+    Lines Added: 13-24, modified 31-32, 46
+    Impact: Standardized state handling
+
+[✓] project/main.py
+    Changes: Added None check for routing path
+    Lines Added: 57-61
+    Impact: Proper error handling for unreachable paths
+
+[✓] project/ui/backend.py
+    Changes: 
+    - Added imports (deque, logging, utils)
+    - Added SCOOT error handling (lines 36-42)
+    - Added pending_duration_lock (line 90)
+    - Changed event_log to deque (line 100)
+    - Thread-safe pending_duration access (lines 156, 394)
+    - SCOOT null checks (lines 150-166)
+    - Average wait calculation fix (line 201)
+    - Removed event_log.clear() (removed)
+    - Phase index validation order fix (lines 303-318)
+    - Error status checking (lines 513-518)
+    - Zone detection using utility (line 484)
+    - Safe JSON extraction (line 369)
+    Impact: Multiple critical and high-priority fixes
+
+[✓] project/brain/llm_assistant.py
+    Changes:
+    - Added imports (sys, os, logging, utils)
+    - Module-level TomTom import with fallback (lines 14-18)
+    - Updated TomTom usage with null checks (lines 56-68)
+    - Safe JSON parsing using extract_json_from_text (line 101)
+    Impact: Better error handling and consistency
+
+[✓] .gitignore
+    Changes: Modified brain/ entry to exclude only cache files
+    Lines Changed: 29-33
+    Impact: Brain modules properly tracked in version control
+
+================================================================================
+
+SUMMARY:
+Total Fixes: 12
+Critical: 2
+High: 1
+Medium: 9
+
+New Utilities Created: 3 functions in core/utils.py
+Files Modified: 5 (4 existing + 1 new)
+Lines Added/Modified: ~100+ lines
+
+Status: ALL ERRORS FIXED ✓
+
+================================================================================
+
+VERIFICATION STEPS COMPLETED:
+[✓] Syntax validation (manual review)
+[✓] Import chain verification
+[✓] Thread safety analysis
+[✓] Error handling coverage
+[✓] Backward compatibility check
+[✓] Documentation updated (FIXES_APPLIED.md)
+
+NEXT STEPS:
+1. Run Python syntax checker: python -m py_compile project/
+2. Run unit tests for utilities
+3. Run integration tests with concurrent requests
+4. Performance test with circular buffer
+5. Stress test race condition fixes
+6. Deploy to staging environment
+7. Monitor logs for any issues
+
+================================================================================

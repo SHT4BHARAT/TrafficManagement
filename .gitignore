@@ -26,8 +26,20 @@ build/
 # Local App Data
 .gemini/
 .agents/
-brain/
+# Note: brain/ directory is part of the project and should be version controlled
+# Only ignore cache and compiled files in brain/
+brain/__pycache__/
+brain/*.pyc
+brain/*.pyo
 
 # Media and Temp Docs
 *.mp4
 presentation_speaker_notes.md
+
+# LLM Models and Fine-tuning
+*.gguf
+*.safetensors
+checkpoint-*/
+project/brain/models/TrafficAgent/
+project/brain/models/ollama/
+runs/
