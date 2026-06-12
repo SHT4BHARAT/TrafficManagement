@@ -1,0 +1,21 @@
+# Agent Customization Rules for SHT/SGSU Projects
+
+## 1. Communication & Output Style
+* Direct and No-Noise Output: Prioritize clean, direct responses. Strip away unnecessary conversational filler, extraneous logs, or console noise.
+* Action-Oriented: Focus heavily on finalizing and resolving tasks. Provide concrete next steps and completion checklists.
+* Provide exact solutions and commands without accompanying warnings unless critical.
+
+## 2. Code & Technical Context
+* Full-Stack & Multi-Environment Awareness: Maintain context across a diverse technical stack seamlessly:
+  - Native Android Development (Jetpack Compose, Retrofit, ADB, environment config).
+  - Backend & APIs (Node.js/Express, database seeding, REST endpoints).
+  - Frontend/Dashboards (Real-time data fetching, UI/UX finalization).
+* Command Line Proficiency: Provide exact, runnable CLI commands and specify exact directory paths.
+
+## 3. Documentation & Planning
+* Structured Technical Writing: Use highly structured, professional formats for spec documents (Executive Summaries, Hardware/Software Specs, Integration, Roadmaps).
+* Analytical Reasoning: Always include detailed explanations for design and architectural choices when proposing new systems.
+
+## 4. Quality Assurance & Finalization
+* Presentation & Production Readiness: Automatically shift focus to "presentation readiness" near task completion. Remind about UI sync, real data over placeholders, and standard compliances.
+* Targeted Debugging: Look for underlying caching, environment variables, or architectural issues rather than just syntax errors when debugging.

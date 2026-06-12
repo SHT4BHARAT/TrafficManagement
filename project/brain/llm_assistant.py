@@ -29,7 +29,42 @@ class HQAssistantLLM:
         self.api_url = f"{self.base_url}/api/generate"
         print(f"[LLM] Initialized for local Ollama: {self.model_name}")
 
+    def query_rl_state(self, intersection_id: str = "INT_001") -> dict:
+        """
+        Queries Redis to retrieve the latest live RL agent state parameters.
+        """
+        try:
+            from core.db_client import RedisClient
+            redis_client = RedisClient()
+            if redis_client.connected:
+                state = redis_client.get_live_state(intersection_id)
+                if state:
+                    return {
+                        "reward": state.get("reward"),
+                        "green_lights": state.get("green_lights"),
+                        "ai_duration": state.get("ai_duration"),
+                        "ai_reasoning": state.get("ai_reasoning"),
+                        "cycle_countdown": state.get("cycle_countdown"),
+                        "pi": state.get("pi"),
+                        "queues": {
+                            "N": state.get("queue_N"),
+                            "S": state.get("queue_S"),
+                            "E": state.get("queue_E"),
+                            "W": state.get("queue_W")
+                        },
+                        "vpm": {
+                            "N": state.get("vpm_N"),
+                            "S": state.get("vpm_S"),
+                            "E": state.get("vpm_E"),
+                            "W": state.get("vpm_W")
+                        }
+                    }
+        except Exception as e:
+            logger.error(f"[LLM] Error querying RL state: {e}")
+        return {}
+
     def mock_retrieval(self, query):
+
         """
         Simulates searching a Vector DB for historical patterns.
         """
@@ -47,28 +82,11 @@ class HQAssistantLLM:
     def _local_fallback_inference(self, live_state: dict) -> dict:
         """
         Compute a duration recommendation locally when Ollama is unavailable.
-        Uses queue depth + VPS to estimate optimal green time (no model needed).
+        Returns a static fallback since heuristics are removed.
         """
-        phase = live_state.get("phase", "N-S")
-        vps = live_state.get("vps", {})
-        queues = live_state.get("queues", {})
-
-        # Determine which lanes are in this phase
-        if "N" in phase or "S" in phase:
-            lanes = ["N", "S"]
-        else:
-            lanes = ["E", "W"]
-
-        total_queue = sum(queues.get(l, 0) for l in lanes)
-        avg_vps = sum(vps.get(l, 10) for l in lanes) / max(1, len(lanes))
-
-        # Simple heuristic: base 20s + 1s per queued vehicle, scaled by arrival rate
-        duration = int(20 + total_queue * 1.0 + avg_vps * 0.3)
-        duration = max(10, min(60, duration))
-
         return {
-            "duration": duration,
-            "reasoning": f"Local fallback (Ollama offline): queue={total_queue} veh, avg_vps={avg_vps:.0f} → {duration}s recommended.",
+            "duration": 35,
+            "reasoning": "Local fallback (Ollama offline). Returning standard 35s duration.",
             "status": "fallback"
         }
 
@@ -119,7 +137,7 @@ class HQAssistantLLM:
                 "prompt": prompt,
                 "stream": False
             }
-            response = requests.post(self.api_url, json=payload, timeout=180)
+            response = requests.post(self.api_url, json=payload, timeout=300)
             
             if response.status_code == 200:
                 raw = response.json().get('response', "").strip()

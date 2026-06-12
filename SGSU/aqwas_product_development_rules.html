@@ -1,0 +1,264 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans)}
+.section{margin-bottom:28px}
+.section-header{display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--color-border-tertiary)}
+.section-num{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:500;flex-shrink:0}
+.section-title{font-size:16px;font-weight:500;color:var(--color-text-primary)}
+.rules-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.rule-card{background:var(--color-background-secondary);border:1px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:12px 14px;border-left:3px solid}
+.rule-id{font-size:11px;font-weight:500;letter-spacing:.04em;margin-bottom:4px;opacity:.7}
+.rule-text{font-size:13px;color:var(--color-text-primary);line-height:1.5}
+.rule-tag{display:inline-block;font-size:10px;font-weight:500;padding:2px 7px;border-radius:20px;margin-top:6px}
+.priority{display:inline-block;font-size:10px;font-weight:500;padding:2px 6px;border-radius:4px;margin-left:6px;vertical-align:middle}
+.p0{background:#fde8e8;color:#a32d2d}
+.p1{background:#fef3e0;color:#854f0b}
+.p2{background:#eaf3de;color:#3b6d11}
+.col-teal{border-left-color:#1D9E75}.col-blue{border-left-color:#185FA5}.col-purple{border-left-color:#534AB7}.col-amber{border-left-color:#BA7517}.col-coral{border-left-color:#993C1D}.col-gray{border-left-color:#5F5E5A}
+.num-teal{background:#E1F5EE;color:#085041}.num-blue{background:#E6F1FB;color:#0C447C}.num-purple{background:#EEEDFE;color:#3C3489}.num-amber{background:#FAEEDA;color:#633806}.num-coral{background:#FAECE7;color:#712B13}.num-gray{background:#F1EFE8;color:#444441}
+.tag-teal{background:#E1F5EE;color:#085041}.tag-blue{background:#E6F1FB;color:#0C447C}.tag-purple{background:#EEEDFE;color:#3C3489}.tag-amber{background:#FAEEDA;color:#633806}.tag-coral{background:#FAECE7;color:#712B13}.tag-gray{background:#F1EFE8;color:#444441}
+.full{grid-column:1/-1}
+</style>
+
+<div style="padding:4px 0 20px">
+
+<div class="section">
+  <div class="section-header">
+    <div class="section-num num-teal">1</div>
+    <span class="section-title">Engineering & architecture rules</span>
+  </div>
+  <div class="rules-grid">
+    <div class="rule-card col-teal">
+      <div class="rule-id">ENG-01 <span class="priority p0">P0</span></div>
+      <div class="rule-text">All sensor-to-cloud data transmission MUST use TLS 1.3 with mutual certificate authentication. No unencrypted IoT connections permitted in any environment.</div>
+      <span class="rule-tag tag-teal">Security</span>
+    </div>
+    <div class="rule-card col-teal">
+      <div class="rule-id">ENG-02 <span class="priority p0">P0</span></div>
+      <div class="rule-text">Every service must be stateless and horizontally scalable. No service may store session state in memory — use distributed cache (Redis) for shared state.</div>
+      <span class="rule-tag tag-teal">Scalability</span>
+    </div>
+    <div class="rule-card col-teal">
+      <div class="rule-id">ENG-03 <span class="priority p0">P0</span></div>
+      <div class="rule-text">Sensor data ingestion pipeline must be idempotent. Duplicate readings from retry logic must be deduplicated before writing to the time-series store.</div>
+      <span class="rule-tag tag-teal">Data integrity</span>
+    </div>
+    <div class="rule-card col-teal">
+      <div class="rule-id">ENG-04 <span class="priority p1">P1</span></div>
+      <div class="rule-text">Edge compute nodes must perform basic plausibility filtering (pH 0–14, turbidity ≥ 0) before forwarding to cloud. Invalid readings are quarantined, not discarded.</div>
+      <span class="rule-tag tag-teal">Data quality</span>
+    </div>
+    <div class="rule-card col-teal">
+      <div class="rule-id">ENG-05 <span class="priority p1">P1</span></div>
+      <div class="rule-text">All infrastructure must be defined as code (Terraform/CDK). No manual cloud console resource creation. Infrastructure changes require PR review and plan review before apply.</div>
+      <span class="rule-tag tag-teal">IaC</span>
+    </div>
+    <div class="rule-card col-teal">
+      <div class="rule-id">ENG-06 <span class="priority p1">P1</span></div>
+      <div class="rule-text">Database schema changes require a migration script that is backwards-compatible. Zero-downtime deployments must be possible. Breaking migrations are never allowed in a single release.</div>
+      <span class="rule-tag tag-teal">Database</span>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-header">
+    <div class="section-num num-blue">2</div>
+    <span class="section-title">Data & ML model rules</span>
+  </div>
+  <div class="rules-grid">
+    <div class="rule-card col-blue">
+      <div class="rule-id">ML-01 <span class="priority p0">P0</span></div>
+      <div class="rule-text">Every ML model must be versioned, logged in MLflow, and reproducible from a fixed seed + frozen dependency set. A model that cannot be reproduced cannot be deployed.</div>
+      <span class="rule-tag tag-blue">MLOps</span>
+    </div>
+    <div class="rule-card col-blue">
+      <div class="rule-id">ML-02 <span class="priority p0">P0</span></div>
+      <div class="rule-text">No model may be promoted to production without passing the performance gate: anomaly detection precision ≥ 90%, recall ≥ 85%, evaluated on a held-out labeled dataset.</div>
+      <span class="rule-tag tag-blue">Quality gate</span>
+    </div>
+    <div class="rule-card col-blue">
+      <div class="rule-id">ML-03 <span class="priority p0">P0</span></div>
+      <div class="rule-text">Every alert generated by an AI model MUST include a SHAP-based explanation surfacing the top 3 contributing features in plain language. Black-box alerts are never shipped to operators.</div>
+      <span class="rule-tag tag-blue">Explainability</span>
+    </div>
+    <div class="rule-card col-blue">
+      <div class="rule-id">ML-04 <span class="priority p1">P1</span></div>
+      <div class="rule-text">Training and validation datasets must be split temporally (train on past, validate on future), not randomly. Random splits cause data leakage in time-series models.</div>
+      <span class="rule-tag tag-blue">Training</span>
+    </div>
+    <div class="rule-card col-blue">
+      <div class="rule-id">ML-05 <span class="priority p1">P1</span></div>
+      <div class="rule-text">Model performance is monitored weekly. If RMSE or F1 degrades by more than 10% from the deployment baseline, an automated retraining job is triggered with a blocking review gate.</div>
+      <span class="rule-tag tag-blue">Monitoring</span>
+    </div>
+    <div class="rule-card col-blue">
+      <div class="rule-id">ML-06 <span class="priority p1">P1</span></div>
+      <div class="rule-text">Forecast confidence intervals must always be displayed alongside predicted values. Point forecasts without uncertainty bounds are misleading and are prohibited in the UI.</div>
+      <span class="rule-tag tag-blue">Uncertainty</span>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-header">
+    <div class="section-num num-purple">3</div>
+    <span class="section-title">Alerting & incident response rules</span>
+  </div>
+  <div class="rules-grid">
+    <div class="rule-card col-purple">
+      <div class="rule-id">ALERT-01 <span class="priority p0">P0</span></div>
+      <div class="rule-text">Emergency-tier (P0) alerts must be delivered within 120 seconds of detection. This is a hard SLA — measured by automated canary tests running continuously in production.</div>
+      <span class="rule-tag tag-purple">SLA</span>
+    </div>
+    <div class="rule-card col-purple">
+      <div class="rule-id">ALERT-02 <span class="priority p0">P0</span></div>
+      <div class="rule-text">Alert notification service must be architecturally independent of the main application. A dashboard outage must never prevent Emergency alerts from reaching operators.</div>
+      <span class="rule-tag tag-purple">Resilience</span>
+    </div>
+    <div class="rule-card col-purple">
+      <div class="rule-id">ALERT-03 <span class="priority p0">P0</span></div>
+      <div class="rule-text">All alerts require acknowledgment with mandatory fields: acknowledged by, action taken, resolution timestamp. An alert cannot be closed without a completed resolution note.</div>
+      <span class="rule-tag tag-purple">Accountability</span>
+    </div>
+    <div class="rule-card col-purple">
+      <div class="rule-id">ALERT-04 <span class="priority p1">P1</span></div>
+      <div class="rule-text">Duplicate alert suppression must deduplicate on the same event within a 15-minute window. Operators must not receive the same alert more than once per active incident.</div>
+      <span class="rule-tag tag-purple">Deduplication</span>
+    </div>
+    <div class="rule-card col-purple">
+      <div class="rule-id">ALERT-05 <span class="priority p1">P1</span></div>
+      <div class="rule-text">Every alert tier (Watch, Advisory, Emergency) must have a distinct visual treatment, sound profile, and notification channel. Operators must never misidentify severity at a glance.</div>
+      <span class="rule-tag tag-purple">UX clarity</span>
+    </div>
+    <div class="rule-card col-purple">
+      <div class="rule-id">ALERT-06 <span class="priority p2">P2</span></div>
+      <div class="rule-text">Escalation paths must be configurable per site: if a primary operator does not acknowledge within N minutes, the system automatically escalates to the defined secondary contact.</div>
+      <span class="rule-tag tag-purple">Escalation</span>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-header">
+    <div class="section-num num-amber">4</div>
+    <span class="section-title">Security & compliance rules</span>
+  </div>
+  <div class="rules-grid">
+    <div class="rule-card col-amber">
+      <div class="rule-id">SEC-01 <span class="priority p0">P0</span></div>
+      <div class="rule-text">RBAC is mandatory. No user may access data or functionality outside their assigned role. All role assignments are logged and reviewed quarterly.</div>
+      <span class="rule-tag tag-amber">Access control</span>
+    </div>
+    <div class="rule-card col-amber">
+      <div class="rule-id">SEC-02 <span class="priority p0">P0</span></div>
+      <div class="rule-text">MFA is required for all accounts with administrative privileges. Single-factor admin access is a critical security violation in all environments, including staging.</div>
+      <span class="rule-tag tag-amber">Authentication</span>
+    </div>
+    <div class="rule-card col-amber">
+      <div class="rule-id">SEC-03 <span class="priority p0">P0</span></div>
+      <div class="rule-text">The data ingestion pipeline must run anomaly detection on sensor metadata patterns to detect spoofed readings. Cybersecurity threats to IoT sensors are treated at the same severity as water contamination events.</div>
+      <span class="rule-tag tag-amber">IoT security</span>
+    </div>
+    <div class="rule-card col-amber">
+      <div class="rule-id">SEC-04 <span class="priority p1">P1</span></div>
+      <div class="rule-text">All audit logs are immutable, retained for a minimum of 7 years, and stored in a separate account/subscription from the application to prevent tampering.</div>
+      <span class="rule-tag tag-amber">Audit</span>
+    </div>
+    <div class="rule-card col-amber">
+      <div class="rule-id">SEC-05 <span class="priority p1">P1</span></div>
+      <div class="rule-text">A third-party penetration test is required before GA release and annually thereafter. All critical and high-severity findings must be resolved before the test report is closed.</div>
+      <span class="rule-tag tag-amber">Pen testing</span>
+    </div>
+    <div class="rule-card col-amber">
+      <div class="rule-id">SEC-06 <span class="priority p1">P1</span></div>
+      <div class="rule-text">API keys and secrets must never appear in source code, logs, or error messages. All secrets are managed via a secrets manager (e.g., AWS Secrets Manager / HashiCorp Vault).</div>
+      <span class="rule-tag tag-amber">Secrets mgmt</span>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-header">
+    <div class="section-num num-coral">5</div>
+    <span class="section-title">Product & UX rules</span>
+  </div>
+  <div class="rules-grid">
+    <div class="rule-card col-coral">
+      <div class="rule-id">UX-01 <span class="priority p0">P0</span></div>
+      <div class="rule-text">Every alert and AI output visible to an operator must include a plain-language explanation. Technical model outputs (raw SHAP values, log-odds scores) must never be exposed directly in the operator UI.</div>
+      <span class="rule-tag tag-coral">Explainability</span>
+    </div>
+    <div class="rule-card col-coral">
+      <div class="rule-id">UX-02 <span class="priority p1">P1</span></div>
+      <div class="rule-text">Dashboard must achieve a System Usability Scale (SUS) score of ≥ 75 in UAT with real water utility operators. UX debt that drops this score below 70 blocks the GA release milestone.</div>
+      <span class="rule-tag tag-coral">Usability</span>
+    </div>
+    <div class="rule-card col-coral">
+      <div class="rule-id">UX-03 <span class="priority p1">P1</span></div>
+      <div class="rule-text">All user-facing features must comply with WCAG 2.1 Level AA. Accessibility is not a post-launch retrofit — it is a definition-of-done requirement for every feature.</div>
+      <span class="rule-tag tag-coral">Accessibility</span>
+    </div>
+    <div class="rule-card col-coral">
+      <div class="rule-id">UX-04 <span class="priority p1">P1</span></div>
+      <div class="rule-text">No new major feature may ship without a corresponding onboarding or guided tour update. Operators must never discover critical features accidentally.</div>
+      <span class="rule-tag tag-coral">Onboarding</span>
+    </div>
+    <div class="rule-card col-coral">
+      <div class="rule-id">UX-05 <span class="priority p2">P2</span></div>
+      <div class="rule-text">The dashboard must be fully functional on tablet devices (min 768px viewport). Field technicians use tablets as their primary operational tool.</div>
+      <span class="rule-tag tag-coral">Responsiveness</span>
+    </div>
+    <div class="rule-card col-coral">
+      <div class="rule-id">UX-06 <span class="priority p2">P2</span></div>
+      <div class="rule-text">All geospatial map interactions (zoom, filter, site selection) must complete within 500ms. Slow maps erode operator trust more than any other UI performance issue.</div>
+      <span class="rule-tag tag-coral">Performance</span>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-header">
+    <div class="section-num num-gray">6</div>
+    <span class="section-title">Development process rules</span>
+  </div>
+  <div class="rules-grid">
+    <div class="rule-card col-gray">
+      <div class="rule-id">DEV-01 <span class="priority p0">P0</span></div>
+      <div class="rule-text">All code changes require at minimum one peer review and must pass the full automated test suite (unit + integration + contract tests) before merging to the main branch. No exceptions.</div>
+      <span class="rule-tag tag-gray">Code review</span>
+    </div>
+    <div class="rule-card col-gray">
+      <div class="rule-id">DEV-02 <span class="priority p0">P0</span></div>
+      <div class="rule-text">Feature flags are required for all features in active development. No feature may reach production in a partially complete state without being behind a disabled flag.</div>
+      <span class="rule-tag tag-gray">Feature flags</span>
+    </div>
+    <div class="rule-card col-gray">
+      <div class="rule-id">DEV-03 <span class="priority p1">P1</span></div>
+      <div class="rule-text">Every new API endpoint must have a contract test. Breaking API changes require a version bump and a deprecation notice with minimum 60-day notice period to existing consumers.</div>
+      <span class="rule-tag tag-gray">API versioning</span>
+    </div>
+    <div class="rule-card col-gray">
+      <div class="rule-id">DEV-04 <span class="priority p1">P1</span></div>
+      <div class="rule-text">Runbooks must exist for every P0 alert condition and every deployment procedure. If an on-call engineer cannot resolve an incident within 30 minutes using the runbook, the runbook is out of date.</div>
+      <span class="rule-tag tag-gray">Runbooks</span>
+    </div>
+    <div class="rule-card col-gray">
+      <div class="rule-id">DEV-05 <span class="priority p1">P1</span></div>
+      <div class="rule-text">All production incidents (P0/P1) require a written post-mortem within 5 business days. Post-mortems are blameless, public within the team, and tracked until all action items are closed.</div>
+      <span class="rule-tag tag-gray">Post-mortems</span>
+    </div>
+    <div class="rule-card col-gray">
+      <div class="rule-id">DEV-06 <span class="priority p2">P2</span></div>
+      <div class="rule-text">Sprint velocity is measured but never used as a performance metric for individuals. The team ships working software, not story points. Estimation accuracy improves via retrospectives, not pressure.</div>
+      <span class="rule-tag tag-gray">Team health</span>
+    </div>
+  </div>
+</div>
+
+<div style="padding:10px 14px;background:var(--color-background-secondary);border:1px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);font-size:12px;color:var(--color-text-secondary);line-height:1.6">
+  Priority legend: <strong style="color:#a32d2d">P0</strong> = Critical / blocks release &nbsp;·&nbsp; <strong style="color:#854f0b">P1</strong> = High / must be in v1.0 &nbsp;·&nbsp; <strong style="color:#3b6d11">P2</strong> = Medium / planned for v1.x
+</div>
+
+</div>

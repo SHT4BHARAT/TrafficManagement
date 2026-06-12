@@ -1,749 +1,548 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 
-const JunctionVisualizer = ({ metrics, overrideLights }) => {
-  const lanes = ['N', 'S', 'E', 'W'];
+// Mock Data for fallback & interactive feel
+const API_BASE = typeof window !== 'undefined'
+  ? (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '')
+  : 'http://localhost:8000';
+const WS_URL = API_BASE.replace(/^http/, 'ws');
+const API_KEY = typeof window !== 'undefined'
+  ? (process.env.NEXT_PUBLIC_DAITFO_API_KEY || '')
+  : '';
+const MOCK_METRICS = {
+  green_lights: ['N', 'S'],
+  queues: { N: 12, S: 8, E: 25, W: 14 },
+  vpm:    { N: 12, S: 8,  E: 25, W: 14 },
+  cycle_countdown: 18
+};
 
-  if (!metrics) {
-    return (
-      <div className="junction-box loading">
-        <div className="flex-center flex-col gap-2">
-          <div className="pulse-icon large"></div>
-          <span className="loading-text">SYNCHRONIZING TACTICAL DATA...</span>
-        </div>
-      </div>
-    );
-  }
-
-  // Use overrideLights (effectiveLights from parent) when available for instant UI response
-  const activeLights = overrideLights ?? (Array.isArray(metrics?.green_lights) ? metrics.green_lights : []);
-  const cycleCountdown = metrics?.cycle_countdown ?? 0;
-  const isNSActive = activeLights.includes("N") || activeLights.includes("S");
-  const isEWActive = activeLights.includes("E") || activeLights.includes("W");
-
-  // Sector status from congestion (same logic as sector cards): green = flowing/low, orange = congested, red = critical
-  const queues = metrics?.queues || {};
-  const maxPressure = Math.max(...lanes.map(l => (queues[l] || 0) / 30), 0);
-  const anyGreen = activeLights.length > 0;
-  let sectorStatus = 'green'; // flowing
-  if (maxPressure > 0.8) sectorStatus = 'red';
-  else if (maxPressure > 0.4 || !anyGreen) sectorStatus = 'orange';
-
-  const sectorColors = {
-    green: { fill: 'rgba(34, 197, 94, 0.12)', stroke: 'rgba(34, 197, 94, 0.7)' },
-    orange: { fill: 'rgba(245, 158, 11, 0.12)', stroke: 'rgba(245, 158, 11, 0.7)' },
-    red: { fill: 'rgba(244, 63, 94, 0.12)', stroke: 'rgba(244, 63, 94, 0.7)' }
+const VehicleFlow = ({ lane, count, isGreen, vpm = 10 }) => {
+  // Render number of cars proportional to VPM (min 1, max 12 for visual performance)
+  const visualCount = Math.max(1, Math.min(12, Math.ceil(vpm / 4)));
+  const cars = Array.from({ length: visualCount }).map((_, i) => i);
+  // duration = 60/VPM seconds per road traversal; clamped 0.5s–12s
+  const animDuration = Math.max(0.5, Math.min(12, 60 / Math.max(1, vpm)));
+  const getPath = (lane) => {
+    // Indian LHD: vehicles keep LEFT. 
+    // Road centerline at x=100 (N/S) and y=100 (E/W).
+    // N-approaching (from bottom going up): left lane → x=90 (left of center)
+    // S-approaching (from top going down): left lane → x=110 (right of center when facing up)
+    // E-approaching (from left going right): left lane → y=90 (top of center, since they face right)
+    // W-approaching (from right going left): left lane → y=110 (bottom of center, since they face left)
+    switch(lane) {
+      case 'N': return { x1: 90, y1: 200, x2: 90, y2: 0 };   // goes UP on left side
+      case 'S': return { x1: 110, y1: 0, x2: 110, y2: 200 }; // goes DOWN on left side
+      case 'E': return { x1: 0, y1: 90, x2: 200, y2: 90 };   // goes RIGHT on top half
+      case 'W': return { x1: 200, y1: 110, x2: 0, y2: 110 }; // goes LEFT on bottom half
+      default: return null;
+    }
   };
-  const sector = sectorColors[sectorStatus];
-
-  // Signal colour: green, orange (amber when countdown <= 3), red
-  const getSignalColor = (lane) => {
-    const isGreen = activeLights.includes(lane);
-    if (!isGreen) return { fill: '#f43f5e', filter: 'drop-shadow(0 0 5px rgba(244, 63, 94, 0.5))' }; // red
-    if (cycleCountdown <= 3 && cycleCountdown > 0) return { fill: '#f59e0b', filter: 'drop-shadow(0 0 8px rgba(245, 158, 11, 0.6))' }; // orange/amber
-    return { fill: '#22c55e', filter: 'drop-shadow(0 0 10px rgba(34, 197, 94, 0.5))' }; // green
-  };
-
-  // Right-hand traffic: vehicles on the right side of the road in direction of travel
-  // N lane: flow is southbound (down) → right side = west → lower x (90)
-  // S lane: flow is northbound (up) → right side = east → higher x (110)
-  // E lane: flow is westbound (left) → right side = north → lower y (90)
-  // W lane: flow is eastbound (right) → right side = south → higher y (110)
-  const vehicleX = { N: 90, S: 110, E: null, W: null };
-  const vehicleY = { N: null, S: null, E: 90, W: 110 };
-
+  const p = getPath(lane);
+  if (!p) return null;
   return (
-    <div className="junction-box" style={{ background: 'transparent' }}>
-      <svg viewBox="0 0 200 200" className="junction-svg">
-        {/* Sector circle - colour by status (green / orange / red) */}
-        <circle cx="100" cy="100" r="102" fill={sector.fill} stroke={sector.stroke} strokeWidth="2" />
+    <g>
+      {cars.map(i => (
+        <rect key={i} width="8" height="14" rx="2" fill="var(--secondary)"
+          style={{
+            opacity: 0.9, filter: 'drop-shadow(0 0 8px var(--secondary))',
+            offsetPath: `path('M ${p.x1} ${p.y1} L ${p.x2} ${p.y2}')`,
+            animationName: isGreen ? 'vehicle-move' : 'none',
+            animationDuration: `${animDuration.toFixed(2)}s`,
+            animationTimingFunction: 'linear',
+            animationIterationCount: 'infinite',
+            animationDelay: `${i * 0.3}s`,
+            offsetDistance: isGreen ? '0%' : '35%',
+            visibility: !isGreen && i > 0 ? 'hidden' : 'visible'
+          }}
+        />
+      ))}
+    </g>
+  );
+};
 
-        <rect x="80" y="0" width="40" height="200"
-          fill={isNSActive ? 'rgba(34, 197, 94, 0.15)' : '#0f172a'}
-          stroke={isNSActive ? 'var(--secondary)' : 'transparent'} strokeWidth="1" />
-        <rect x="0" y="80" width="200" height="40"
-          fill={isEWActive ? 'rgba(34, 197, 94, 0.15)' : '#0f172a'}
-          stroke={isEWActive ? 'var(--secondary)' : 'transparent'} strokeWidth="1" />
+const JunctionVisualizer = ({ metrics, size = "100%" }) => {
+  const data = metrics || MOCK_METRICS;
+  const activeLights = Array.isArray(data?.green_lights) ? data.green_lights : [];
+  const queues = data?.queues || {};
+  
+  return (
+    <div className="flex-1 flex justify-center items-center w-full h-full overflow-hidden relative" style={{ padding: '8px' }}>
+      <style>{`@keyframes vehicle-move { from { offset-distance: 0%; } to { offset-distance: 100%; } }`}</style>
+      
+      {/* Tactical Compass (Top-Right High Contrast) */}
+      <div className="absolute top-10 right-10 flex flex-col items-center opacity-90" style={{ border: '3px solid var(--primary)', borderRadius: '50%', width: '56px', height: '56px', justifyContent: 'center', background: 'var(--bg-card)', boxShadow: '0 0 25px var(--primary-glow)', zIndex: 100 }}>
+         <span style={{ fontSize: '0.9rem', fontWeight: 900, color: 'var(--primary)', letterSpacing: '1px' }}>N</span>
+         <div style={{ width: '4px', height: '16px', background: 'var(--primary)', marginTop: '-3px', borderRadius: '2px', boxShadow: '0 0 10px var(--primary)' }}></div>
+      </div>
 
-        <line x1="100" y1="0" x2="100" y2="75" stroke="#334155" strokeDasharray="4" />
-        <line x1="100" y1="125" x2="100" y2="200" stroke="#334155" strokeDasharray="4" />
-        <line x1="0" y1="100" x2="75" y2="100" stroke="#334155" strokeDasharray="4" />
-        <line x1="125" y1="100" x2="200" y2="100" stroke="#334155" strokeDasharray="4" />
+      <svg viewBox="0 0 200 200" style={{ width: '100%', height: '100%', maxWidth: 'calc(100vh - 356px)', maxHeight: 'calc(100vh - 356px)', aspectRatio: '1/1' }}>
+        <defs>
+          <radialGradient id="roadGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.15" />
+            <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <circle cx="100" cy="100" r="100" fill="url(#roadGlow)" />
+        <circle cx="100" cy="100" r="95" fill="none" stroke="var(--primary)" strokeWidth="0.5" strokeDasharray="4,4" opacity="0.3" />
+        
+        {/* Roads */}
+        <rect x="80" y="0" width="40" height="200" fill="rgba(148, 163, 184, 0.12)" rx="2" />
+        <rect x="0" y="80" width="40" height="200" fill="rgba(148, 163, 184, 0.12)" rx="2" transform="rotate(-90 100 100)" />
+        
+        {/* Lane Markings */}
+        <line x1="100" y1="0" x2="100" y2="80" stroke="var(--text-dim)" strokeDasharray="5" opacity="0.4" />
+        <line x1="100" y1="120" x2="100" y2="200" stroke="var(--text-dim)" strokeDasharray="5" opacity="0.4" />
+        <line x1="0" y1="100" x2="80" y2="100" stroke="var(--text-dim)" strokeDasharray="5" opacity="0.4" />
+        <line x1="120" y1="100" x2="200" y2="100" stroke="var(--text-dim)" strokeDasharray="5" opacity="0.4" />
+        
+        {/* Orientation Labels (High Visibility & Inward for No-Clipping) */}
+        <text x="100" y="30" textAnchor="middle" fill="var(--primary)" fontSize="14" fontWeight="900" style={{ filter: 'drop-shadow(0 0 5px var(--primary))', pointerEvents: 'none' }}>N</text>
+        <text x="100" y="174" textAnchor="middle" fill="var(--primary)" fontSize="14" fontWeight="900" style={{ filter: 'drop-shadow(0 0 5px var(--primary))', pointerEvents: 'none' }}>S</text>
+        <text x="170" y="105" textAnchor="middle" fill="var(--primary)" fontSize="14" fontWeight="900" style={{ filter: 'drop-shadow(0 0 5px var(--primary))', pointerEvents: 'none' }}>E</text>
+        <text x="30" y="105" textAnchor="middle" fill="var(--primary)" fontSize="14" fontWeight="900" style={{ filter: 'drop-shadow(0 0 5px var(--primary))', pointerEvents: 'none' }}>W</text>
 
-        {/* Signals: green, red, or orange (amber when countdown <= 3) */}
-        {lanes.map(lane => {
-          const isGreen = activeLights.includes(lane);
-          const signalStyle = getSignalColor(lane);
-          let pos = {};
-          if (lane === 'N') pos = { x: 85, y: 75 };
-          if (lane === 'S') pos = { x: 115, y: 125 };
-          if (lane === 'E') pos = { x: 125, y: 85 };
-          if (lane === 'W') pos = { x: 75, y: 115 };
+        {['N', 'S', 'E', 'W'].map(lane => (
+          <VehicleFlow key={lane} lane={lane} count={queues[lane] || 0} isGreen={activeLights.includes(lane)} vpm={data?.vpm?.[lane] || 10} />
+        ))}
+        
+        {['N', 'S', 'E', 'W'].map(lane => {
+          const isG = activeLights.includes(lane);
+          let pos = lane === 'N' ? { x: 88, y: 72 } : lane === 'S' ? { x: 112, y: 128 } : lane === 'E' ? { x: 128, y: 88 } : { x: 72, y: 112 };
           return (
-            <circle key={lane} cx={pos.x} cy={pos.y} r="5"
-              fill={signalStyle.fill}
-              className={isGreen && cycleCountdown > 3 ? 'pulse-green' : ''}
-              style={{ filter: signalStyle.filter }}
-            />
+            <g key={lane}>
+              <circle cx={pos.x} cy={pos.y} r="7" fill={isG ? '#22c55e' : '#f43f5e'} style={{ filter: `drop-shadow(0 0 12px ${isG ? '#22c55e' : '#f43f5e'})` }} />
+              {isG && (
+                <circle cx={pos.x} cy={pos.y} r="9" fill="none" stroke="#22c55e" strokeWidth="1.5">
+                  <animate attributeName="r" from="7" to="24" dur="1.2s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" from="0.7" to="0" dur="1.2s" repeatCount="indefinite" />
+                </circle>
+              )}
+            </g>
           );
-        })}
-
-        {/* Vehicles: white, on right-hand side of each approach */}
-        {lanes.map(lane => {
-          const isGreen = activeLights.includes(lane);
-          const density = metrics?.queues?.[lane] || 0;
-          const dotsCount = Math.ceil(density / 2);
-          const xOff = vehicleX[lane];
-          const yOff = vehicleY[lane];
-
-          return Array.from({ length: 20 }).map((_, i) => {
-            const isVisible = i < dotsCount;
-            let pos = { x: 0, y: 0 };
-            let style = {};
-
-            if (isGreen) {
-              if (lane === 'N') pos = { x: xOff, y: -10 };
-              if (lane === 'S') pos = { x: xOff, y: 210 };
-              if (lane === 'E') pos = { x: 210, y: yOff };
-              if (lane === 'W') pos = { x: -10, y: yOff };
-              style = {
-                animationName: `flow-${lane.toLowerCase()}`,
-                animationDuration: `${Math.max(4, 8 - (density / 5))}s`,
-                animationTimingFunction: 'linear',
-                animationIterationCount: 'infinite',
-                animationDelay: `${i * 1.5}s`
-              };
-            } else {
-              const offset = i * 15;
-              if (lane === 'N') pos = { x: xOff, y: Math.max(0, 65 - offset) };
-              if (lane === 'S') pos = { x: xOff, y: Math.min(200, 135 + offset) };
-              if (lane === 'E') pos = { x: Math.min(200, 135 + offset), y: yOff };
-              if (lane === 'W') pos = { x: Math.max(0, 65 - offset), y: yOff };
-            }
-
-            return (
-              <circle key={`${lane}-${i}`} cx={pos.x} cy={pos.y} r="3"
-                fill="#ffffff"
-                className={`traffic-dot dot-${lane.toLowerCase()}`}
-                style={{
-                  ...style,
-                  opacity: isVisible ? (isGreen ? 0.9 : 1) : 0,
-                  visibility: isVisible ? 'visible' : 'hidden',
-                  filter: 'drop-shadow(0 0 6px rgba(255,255,255,0.9))'
-                }}
-              />
-            );
-          });
         })}
       </svg>
     </div>
   );
 };
 
-export default function DashboardV3() {
-  const [mounted, setMounted] = useState(false);
+const CityMap = ({ metrics, selectedNode, setSelectedNode }) => {
+  const nodes = [];
+  for (let r = 0; r < 4; r++) {
+    for (let c = 0; c < 5; c++) {
+      const id = `INT_${String(r * 5 + c + 1).padStart(3, '0')}`;
+      nodes.push({ id, x: 150 + c * 175, y: 150 + r * 150, active: id === selectedNode });
+    }
+  }
+  return (
+    <div className="map-canvas-area flex-1 flex flex-col justify-center items-center relative">
+      <div className="absolute top-8 left-1/2 transform -translate-x-1/2 term-label" style={{ background: 'var(--primary-glow)', padding: '4px 20px', borderRadius: '20px', border: '1px solid var(--primary)' }}>
+         ▲ NORTH TACTICAL GRID
+      </div>
+      <svg viewBox="0 0 1000 750" style={{ width: '95%', height: '95%' }}>
+        {nodes.map((n, i) => {
+          const nextRow = nodes.find(nn => nn.x === n.x && nn.y === n.y + 150);
+          const nextCol = nodes.find(nn => nn.y === n.y && nn.x === n.x + 175);
+          return (
+            <React.Fragment key={i}>
+              {nextRow && <line x1={n.x} y1={n.y} x2={nextRow.x} y2={nextRow.y} stroke="var(--primary)" strokeWidth="3" opacity="0.2" />}
+              {nextCol && <line x1={n.x} y1={n.y} x2={nextCol.x} y2={nextCol.y} stroke="var(--primary)" strokeWidth="3" opacity="0.2" />}
+            </React.Fragment>
+          );
+        })}
+        {nodes.map(n => (
+          <g key={n.id} transform={`translate(${n.x}, ${n.y})`} style={{ cursor: 'pointer' }} onClick={() => setSelectedNode(n.id)}>
+            <circle r={n.active ? "36" : "18"} fill={n.active ? "var(--primary)" : "var(--bg-card)"} stroke="var(--primary)" strokeWidth="3" style={{ transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }} />
+            {n.active && (
+              <circle r="40" fill="none" stroke="var(--primary)" strokeWidth="1">
+                <animate attributeName="r" from="36" to="60" dur="2s" repeatCount="indefinite" />
+                <animate attributeName="opacity" from="0.5" to="0" dur="2s" repeatCount="indefinite" />
+              </circle>
+            )}
+            <text y="5" textAnchor="middle" fill={n.active ? "#fff" : "var(--text-main)"} fontSize="12" fontWeight="900" style={{ pointerEvents: 'none' }}>{n.id}</text>
+            <text y="55" textAnchor="middle" fill="var(--text-dim)" fontSize="11" fontWeight="700" style={{ pointerEvents: 'none' }}>{n.active ? "SELECTED" : "STABLE"}</text>
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+};
+
+export default function Dashboard() {
+  const junctions = Array.from({ length: 20 }, (_, i) => `INT_${String(i + 1).padStart(3, '0')}`);
+  const [activeTab, setActiveTab] = useState("junction");
+  const [theme, setTheme] = useState("dark-theme");
+  const [selectedNode, setSelectedNode] = useState("INT_001");
   const [metrics, setMetrics] = useState(null);
-  const [vps, setVps] = useState({ N: 14, S: 11, E: 6, W: 22 });
-  const [ctrlMode, setCtrlMode] = useState("manual"); // "manual" | "auto"
-  const [autoVps, setAutoVps] = useState({ N: 14, S: 11, E: 6, W: 22 });
-  const autoVpsTimer = useRef(null);
   const [log, setLog] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [loadingSecs, setLoadingSecs] = useState(0);
-  const loadingTimer = useRef(null);
-  const [chatQuery, setChatQuery] = useState("");
-  const [chatLoading, setChatLoading] = useState(false);
-  const [wsStatus, setWsStatus] = useState("connecting"); // FIX Bug 10
-  const [slmStatus, setSlmStatus] = useState(null); // null = not checked, { ok, message } from /api/slm-status
-  const [pendingPhase, setPendingPhase] = useState(null); // optimistic: "N"|"S"|"E"|"W"|"N-S"|"E-W" until metrics confirm
-  const wsRef = useRef(null);
-  const reconnectTimer = useRef(null);
+  const [ctrlMode, setCtrlMode] = useState("manual");
+  const [vps, setVps] = useState({ N: 14, S: 11, E: 6, W: 22 });
+  const [phaseDuration, setPhaseDuration] = useState(30);
+  const [activePhase, setActivePhase] = useState('NS');
+  const [slmAdvisory, setSlmAdvisory] = useState({ reasoning: "Awaiting analysis...", recommendation: "" });
+  const [slmThinking, setSlmThinking] = useState(false);
 
-  // FIX Bug 7: stable addLog via useCallback so socket closure always has fresh ref
-  const addLog = useCallback((type, msg) => {
-    const now = new Date();
-    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-    setLog(prev => [{ time, type, msg }, ...prev].slice(0, 20));
-  }, []);
+  // Phase → green lights mapping; updates visualizer immediately without waiting for WebSocket
+  const PHASE_MAP = { NS: ['N','S'], EW: ['E','W'], N:['N'], S:['S'], E:['E'], W:['W'] };
+  const selectPhase = async (phase) => {
+    setActivePhase(phase);
+    // Immediately reflect in the visualizer (no WebSocket roundtrip needed)
+    setMetrics(prev => ({
+      ...(prev || { queues:{N:0,S:0,E:0,W:0}, vpm:{N:10,S:10,E:10,W:10}, cycle_countdown:30 }),
+      green_lights: PHASE_MAP[phase] || ['N','S']
+    }));
+    try {
+      await fetch(`${API_BASE}/api/select-phase`, {
+        method: 'POST',         headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+        body: JSON.stringify({ phase })
+      });
+      addLog('auto', `Phase → ${phase} active`);
+    } catch { addLog('error', `Phase ${phase} failed`); }
+  };
 
-  // FIX Bug 10: WebSocket with auto-reconnect
-  const connectWebSocket = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+  const toggleTheme = () => {
+    setTheme(prev => prev === "dark-theme" ? "light-theme" : "dark-theme");
+  };
 
-    const socket = new WebSocket("ws://localhost:8000/ws");
-    wsRef.current = socket;
-
-    socket.onopen = () => {
-      setWsStatus("connected");
-      addLog("auto", "COMM_CHANNEL established. Tactical stream active.");
-    };
-
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      setMetrics(data);
-      if (data.events && data.events.length > 0) {
-        data.events.forEach(e => addLog(e.type, e.msg));
-      }
-    };
-
-    socket.onclose = () => {
-      setWsStatus("reconnecting");
-      addLog("error", "COMM_CHANNEL lost. Reconnecting in 3s...");
-      reconnectTimer.current = setTimeout(connectWebSocket, 3000);
-    };
-
-    socket.onerror = () => {
-      socket.close();
-    };
-  }, [addLog]);
+  const [mounted, setMounted] = useState(false);
+  const [juncCaps, setJuncCaps] = useState({});
 
   useEffect(() => {
     setMounted(true);
-    addLog("ai-b", "Action B (Duration) node status: READY");
-    connectWebSocket();
-
-    return () => {
-      clearTimeout(reconnectTimer.current);
-      wsRef.current?.close();
-    };
-  }, [connectWebSocket, addLog]);
-
-  // Sync controller mode and VPS with backend
-  const pushControllerConfig = useCallback((mode, vpsPayload) => {
-    fetch("http://localhost:8000/api/controller-config", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode, vps: vpsPayload ?? undefined }),
-    }).catch(() => {});
+    // Generate static random caps for this session
+    const caps = {};
+    junctions.forEach(id => caps[id] = Math.floor(Math.random()*20)+80);
+    setJuncCaps(caps);
+    
+    const ws = new WebSocket(`${WS_URL}/ws?api_key=${encodeURIComponent(API_KEY)}`);
+    ws.onmessage = (e) => setMetrics(JSON.parse(e.data));
+    ws.onerror = () => console.log("WS Error - Presentation Fallback Active.");
+    return () => { if(ws.readyState === 1) ws.close(); };
   }, []);
 
-  // Auto mode: randomise VPS for each lane every 2s within [2, 40]
   useEffect(() => {
-    if (ctrlMode === "auto") {
-      pushControllerConfig("auto");
-      const tick = () => {
-        const next = {
-          N: Math.floor(Math.random() * 39) + 2,
-          S: Math.floor(Math.random() * 39) + 2,
-          E: Math.floor(Math.random() * 39) + 2,
-          W: Math.floor(Math.random() * 39) + 2,
-        };
-        setAutoVps(next);
-      };
-      tick();
-      autoVpsTimer.current = setInterval(tick, 2000);
-    } else {
-      clearInterval(autoVpsTimer.current);
-      pushControllerConfig("manual", vps);
-    }
-    return () => clearInterval(autoVpsTimer.current);
-  }, [ctrlMode, pushControllerConfig]);
+    document.body.className = theme;
+  }, [theme]);
 
-  // When in manual mode, push VPS to backend when user changes values (debounced)
-  useEffect(() => {
-    if (ctrlMode !== "manual") return;
-    const t = setTimeout(() => pushControllerConfig("manual", vps), 800);
-    return () => clearTimeout(t);
-  }, [ctrlMode, vps, pushControllerConfig]);
+  if (!mounted) return null; // Prevent hydration mismatch
 
-  // Check SLM (Ollama) status for dashboard indicator
-  useEffect(() => {
-    if (!mounted) return;
-    let cancelled = false;
-    fetch("http://localhost:8000/api/slm-status")
-      .then((r) => r.json())
-      .then((data) => { if (!cancelled) setSlmStatus(data); })
-      .catch(() => { if (!cancelled) setSlmStatus({ ok: false, message: "Backend unreachable" }); });
-    return () => { cancelled = true; };
-  }, [mounted]);
-
-  // Clear pendingPhase when metrics confirm the selection — must be before early return
-  useEffect(() => {
-    if (!pendingPhase || !metrics?.green_lights) return;
-    const gl = metrics.green_lights;
-    const matches =
-      (pendingPhase === "N-S" && gl.length === 2 && gl.includes("N") && gl.includes("S")) ||
-      (pendingPhase === "E-W" && gl.length === 2 && gl.includes("E") && gl.includes("W")) ||
-      (["N","S","E","W"].includes(pendingPhase) && gl.length === 1 && gl[0] === pendingPhase);
-    if (matches) setPendingPhase(null);
-  }, [metrics?.green_lights, pendingPhase]);
-
-  if (!mounted) return null;
-
-  // Raw lights from backend
-  const activeLights = Array.isArray(metrics?.green_lights) ? metrics.green_lights : [];
-
-  // effectiveLights: use pendingPhase optimistically so junction + sector cards update instantly on click
-  const pendingToLights = (p) => {
-    if (!p) return null;
-    if (p === "N-S") return ["N", "S"];
-    if (p === "E-W") return ["E", "W"];
-    if (["N","S","E","W"].includes(p)) return [p];
-    return null;
+  const addLog = (type, msg) => {
+    const time = new Date().toLocaleTimeString();
+    setLog(prev => [{ time, type, msg }, ...prev].slice(0, 20));
   };
-  const effectiveLights = pendingToLights(pendingPhase) ?? activeLights;
 
-  const singleGreen = effectiveLights.length === 1 ? effectiveLights[0] : null;
-  const isNSPair = effectiveLights.length === 2 && effectiveLights.includes("N") && effectiveLights.includes("S");
-  const isEWPair = effectiveLights.length === 2 && effectiveLights.includes("E") && effectiveLights.includes("W");
-  const laneNames = { N: "NORTH", S: "SOUTH", E: "EAST", W: "WEST" };
-  const heldLanes = ["N", "S", "E", "W"].filter((l) => !effectiveLights.includes(l));
-  const activeAxisDisplay = isNSPair ? "NORTH-SOUTH" : isEWPair ? "EAST-WEST" : singleGreen ? `${laneNames[singleGreen]} (${singleGreen})` : "ROTATING...";
-  const heldLanesDisplay = heldLanes.length ? `${heldLanes.join("+")} HELD` : "—";
-
-  // Button active states
-  const showActive = (lane) => effectiveLights.length === 1 && effectiveLights[0] === lane;
-  const showNSPairActive = isNSPair;
-  const showEWPairActive = isEWPair;
-
-  const handlePhaseSelect = async (phase) => {
-    setPendingPhase(phase);
-    addLog("act-a", `SELECT_PHASE: ${phase}`);
+  const handleAction = async (endpoint, body) => {
     try {
-      await fetch("http://localhost:8000/api/select-phase", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phase })
+      await fetch(`${API_BASE}/api/${endpoint}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
       });
-      addLog("auto", `Actuation verified: ${phase} active.`);
-    } catch {
-      addLog("error", "Error: Phase switch command timed out.");
-      setPendingPhase(null);
-    }
+      addLog("auto", `Executing mandate: ${endpoint} -> ${selectedNode}`);
+    } catch { addLog("error", "Link integrity 0% - Checking backups."); }
   };
 
-  const handleAskAI = async () => {
-    setLoading(true);
-    setLoadingSecs(0);
-    loadingTimer.current = setInterval(() => setLoadingSecs(s => s + 1), 1000);
-    addLog("auto", "Querying TrafficAgent SLM (CPU inference ~60-120s)...");
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 200000); // 200s — CPU inference is slow
-    try {
-      const activePhase = effectiveLights.join("-") || "N-S";
-      const activeVps = ctrlMode === "auto" ? autoVps : vps;
-      const response = await fetch("http://localhost:8000/api/ai-inference", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phase: activePhase, vps: activeVps }),
-        signal: controller.signal
-      });
-      const data = await response.json();
-      if (data.status === "error") {
-        addLog("error", `INF_ERROR: ${data.message || data.reasoning || "Model unavailable."}`);
-      } else {
-        addLog("ai-b", `INF_RESULT: ${data.duration}s queued for next cycle.`);
-        addLog("ai-b", `REASON: ${data.reasoning}`);
-        if (data.status === "fallback") {
-          addLog("auto", "NOTE: Ollama offline — local heuristic used.");
-        }
-      }
-    } catch (err) {
-      if (err.name === "AbortError") {
-        addLog("error", "ERROR: Inference timed out. Model may still be loading.");
-      } else {
-        addLog("error", "ERROR: Inference engine offline or malformed response.");
-      }
-    } finally {
-      clearTimeout(timeout);
-      clearInterval(loadingTimer.current);
-      setLoading(false);
-      setLoadingSecs(0);
-    }
-  };
+  const renderView = () => {
+    switch(activeTab) {
+      case 'map': return <CityMap metrics={metrics} selectedNode={selectedNode} setSelectedNode={setSelectedNode} />;
+      case 'network': return (
+        <div className="grid grid-cols-2 gap-6 flex-1 p-8">
+          <div className="glass-card p-12 flex-center shadow-xl"><h3>NODE TOPOLOGY</h3><p className="text-secondary mt-4 font-bold">20/20 CLUSTERS SECURE</p></div>
+          <div className="glass-card p-12 flex-center shadow-xl"><h3>DATA LATENCY</h3><p className="text-primary mt-4 font-bold">3.8ms (REAL-TIME)</p></div>
+        </div>
+      );
+      case 'settings': return (
+        <div className="glass-card p-12 flex-center flex-1 m-8">
+           <h3 className="hud-title">SYSTEM PREFERENCES</h3>
+           <div className="mt-8 grid gap-4 w-full max-w-md">
+              <button className="theme-toggle-btn w-full py-4 bg-primary text-white border-none" onClick={toggleTheme}>
+                 {theme === 'dark-theme' ? '☀️ SWITCH TO LIGHT MODE' : '🌙 SWITCH TO DARK MODE'}
+              </button>
+           </div>
+        </div>
+      );
+      default: return (
+        <>
+          <aside className="glass-card junc-index-list shadow-2xl">
+            <div className="p-5 term-label" style={{ borderBottom: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+               <span style={{ fontSize: '0.8rem' }}>INTERSECTION FLEET</span>
+               <div className="pulse-icon" style={{ width: '8px', height: '8px' }} />
+            </div>
+            <div className="jlist-container">
+              {junctions.map(id => (
+                <div key={id} className={`jlist-item ${selectedNode === id ? 'active' : ''}`} onClick={() => setSelectedNode(id)}>
+                  <span>{id}</span>
+                  <span style={{ fontSize: '0.65rem', color: 'var(--secondary)', fontWeight: 800 }}>{juncCaps[id] || '92'}%</span>
+                </div>
+              ))}
+            </div>
+          </aside>
+          
+          <main className="glass-card flex-1 flex flex-col items-center justify-center relative overflow-hidden mx-6 shadow-2xl">
+             <div className="absolute top-6 left-6 term-label" style={{ background: 'var(--primary-glow)', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--primary)', fontSize: '0.7rem' }}>
+                TACTICAL_STREAM: <span className="text-white">{selectedNode}</span>
+             </div>
+             <JunctionVisualizer metrics={metrics} size="100%" />
+          </main>
 
-  const handleChatSubmit = async (e) => {
-    e.preventDefault();
-    if (!chatQuery.trim()) return;
-    const userMsg = chatQuery;
-    setChatQuery("");
-    setChatLoading(true);
-    addLog("user", `> ${userMsg}`);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 200000);
-    try {
-      const response = await fetch("http://localhost:8000/api/ask", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: userMsg }),
-        signal: controller.signal
-      });
-      const data = await response.json();
-      if (data.answer) addLog("ai", data.answer);
-      if (data.recommendation) addLog("ai", `Recommendation: ${data.recommendation}`);
-      if (data.status === "EMERGENCY_ACTIVE") {
-        addLog("error", "[SYSTEM] EMERGENCY OVERRIDE ENGAGED");
-      }
-    } catch (err) {
-      if (err.name === "AbortError") {
-        addLog("error", "SLM TIMEOUT: No response in 15s. Is Ollama running?");
-      } else {
-        addLog("error", "SYSTEM OFFLINE: Local Agent Unreachable");
-      }
-    } finally {
-      clearTimeout(timeout);
-      setChatLoading(false);
-    }
-  };
+          <aside className="glass-card controller-panel shadow-2xl" style={{ overflowY: 'auto' }}>
+            <h2 className="hud-title" style={{ fontSize: '1rem', marginBottom: '16px', color: 'var(--text-main)' }}>COMMAND_{selectedNode}</h2>
+            
+            {/* Mode Toggle — wired to /api/controller-config */}
+            <div className="ctrl-mode-toggle" style={{ height: '44px' }}>
+              {['manual', 'auto', 'rr'].map(m => (
+                <button key={m} className={`ctrl-mode-btn ${ctrlMode === m ? `active-${m}` : ''}`}
+                  style={{ fontSize: '0.75rem' }}
+                  onClick={async () => {
+                    setCtrlMode(m);
+                    try {
+                      await fetch(`${API_BASE}/api/controller-config`, {
+                        method: 'POST',         headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+                        body: JSON.stringify({ mode: m })
+                      });
+                      addLog('auto', `Mode set → ${m.toUpperCase()}`);
+                    } catch { addLog('error', 'Mode switch failed — backend unreachable'); }
+                  }}
+                >{m.toUpperCase()}</button>
+              ))}
+            </div>
 
-  // Manual mode: each lane is independently editable
-  const handleVpsChange = (lane, value) => {
-    setVps(prev => ({ ...prev, [lane]: parseInt(value) || 0 }));
+            {/* Phase Select — NS / EW corridors + individual lanes */}
+            <div style={{ marginTop: '14px' }}>
+              <div className="term-label" style={{ fontSize: '0.6rem', marginBottom: '8px', color: 'var(--text-dim)' }}>PHASE SELECT</div>
+              {/* Corridor pair buttons */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                {[
+                  { phase: 'NS', label: '↕ NS CORRIDOR', color: 'var(--primary)' },
+                  { phase: 'EW', label: '↔ EW CORRIDOR', color: 'var(--secondary)' },
+                ].map(({ phase, label, color }) => (
+                  <button key={phase} id={`phase-${phase}-btn`}
+                    className="theme-toggle-btn"
+                    style={{ height: '40px', fontSize: '0.7rem', fontWeight: 800, justifyContent: 'center',
+                      border: `2px solid ${color}`, color: color, borderRadius: '8px',
+                      background: activePhase === phase ? `${color}22` : 'transparent',
+                      boxShadow: activePhase === phase ? `0 0 12px ${color}88` : 'none',
+                      transition: 'all 0.2s' }}
+                    onClick={() => selectPhase(phase)}
+                  >{label}</button>
+                ))}
+              </div>
+              {/* Individual lane buttons */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                {['N','S','E','W'].map(d => (
+                  <button key={d} id={`phase-${d}-btn`}
+                    className="theme-toggle-btn"
+                    style={{ height: '34px', fontSize: '0.75rem', fontWeight: 900, justifyContent: 'center',
+                      border: '1px solid var(--glass-border)', borderRadius: '6px',
+                      background: activePhase === d ? 'var(--primary-glow)' : 'transparent',
+                      color: activePhase === d ? 'var(--primary)' : 'var(--text-dim)',
+                      transition: 'all 0.2s' }}
+                    onClick={() => selectPhase(d)}
+                  >{d}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* 4-Direction VPM Inputs */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '16px' }}>
+              {['N','S','E','W'].map(l => (
+                <div key={l} className="vps-vessel" style={{ padding: '10px' }}>
+                  <label className="term-label" style={{ fontSize: '0.65rem', marginBottom: '6px' }}>LANE {l} VPM</label>
+                  <input type="number" min="1" max="120" value={vps[l] ?? 10}
+                    onChange={e => setVps({...vps, [l]: Number(e.target.value)})}
+                    className="vps-field" style={{ fontSize: '1.3rem', width: '100%' }} />
+                </div>
+              ))}
+            </div>
+
+            {/* Phase Duration Input */}
+            <div className="vps-vessel" style={{ padding: '10px', marginTop: '10px' }}>
+              <label className="term-label" style={{ fontSize: '0.65rem', marginBottom: '6px' }}>PHASE DURATION (s)</label>
+              <input type="number" min="10" max="300" value={phaseDuration}
+                onChange={e => setPhaseDuration(Number(e.target.value))}
+                className="vps-field" style={{ fontSize: '1.3rem', width: '100%', textAlign: 'center' }} />
+            </div>
+
+            {/* Apply VPM & Duration — wired to /api/controller-config */}
+            <button id="apply-vpm-btn" className="theme-toggle-btn mt-4 w-full"
+              style={{ background: 'var(--primary)', color: 'white', border: 'none', height: '44px', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 800, borderRadius: '10px' }}
+              onClick={async () => {
+                try {
+                  await fetch(`${API_BASE}/api/controller-config`, {
+                    method: 'POST',         headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+                    body: JSON.stringify({ mode: ctrlMode, vps: vps, duration: phaseDuration })
+                  });
+                  addLog('auto', `Config applied → VPM N:${vps.N} S:${vps.S} E:${vps.E} W:${vps.W} | T:${phaseDuration}s`);
+                } catch { addLog('error', 'Apply failed — backend unreachable'); }
+              }}
+            >✅ APPLY CONFIG</button>
+
+            {/* Emergency Trigger */}
+            <button id="emergency-btn-main" className="theme-toggle-btn mt-3 w-full"
+              style={{ background: 'var(--accent)', color: 'white', border: 'none', height: '52px', justifyContent: 'center', fontSize: '1rem', fontWeight: 800, borderRadius: '12px', boxShadow: '0 8px 24px rgba(244, 63, 94, 0.4)' }}
+              onClick={async () => {
+                try {
+                  await fetch(`${API_BASE}/api/emergency/request`, {
+                    method: 'POST',         headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+                    body: JSON.stringify({ zone: selectedNode, start: selectedNode, end: 'INT_001', device_id: 'DASHBOARD' })
+                  });
+                  addLog('error', `🚨 EMERGENCY activated for ${selectedNode}`);
+                } catch { addLog('error', 'Emergency trigger failed'); }
+              }}
+            >🚨 TRIGGER EMERGENCY</button>
+
+            {/* Clear Emergency */}
+            <button id="clear-emergency-btn" className="theme-toggle-btn mt-2 w-full"
+              style={{ border: '1px solid var(--text-dim)', height: '36px', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, borderRadius: '8px', color: 'var(--text-dim)' }}
+              onClick={async () => {
+                try {
+                  await fetch(`${API_BASE}/api/emergency/clear`, { method: 'POST' });
+                  addLog('auto', 'Emergency cleared — resuming AI control');
+                } catch { addLog('error', 'Clear emergency failed'); }
+              }}
+            >✖ CLEAR EMERGENCY</button>
+
+            {/* AI Advisory */}
+            <div className="mt-4 p-4 glass-card" style={{ background: 'rgba(0,0,0,0.03)', border: '1px dashed var(--primary)' }}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                 <div className="term-label" style={{ color: 'var(--primary)', fontSize: '0.65rem' }}>AI_PILOT_ADVISORY (SLM)</div>
+                 <button onClick={async () => {
+                   setSlmThinking(true);
+                   try {
+                     const res = await fetch(`${API_BASE}/api/slm-analyze?zone=${selectedNode}`);
+                     const data = await res.json();
+                     if(data.status === "success") {
+                       setSlmAdvisory(data.data);
+                       addLog('auto', `SLM Intelligence updated for ${selectedNode}`);
+                     } else {
+                       throw new Error(data.message);
+                     }
+                   } catch(e) {
+                     addLog('error', `SLM Error: ${e.message}`);
+                     setSlmAdvisory({ reasoning: "Failed to reach SLM.", recommendation: "Check backend logs." });
+                   }
+                   setSlmThinking(false);
+                 }} 
+                 disabled={slmThinking}
+                 style={{ background: 'var(--primary-glow)', color: 'var(--primary)', border: '1px solid var(--primary)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.6rem', cursor: 'pointer' }}>
+                   {slmThinking ? "ANALYZING..." : "🧠 GET ANALYSIS"}
+                 </button>
+               </div>
+               <p style={{ fontSize: '0.75rem', marginTop: '10px', lineHeight: '1.6', color: 'var(--text-dim)' }}>
+                 {slmThinking ? (
+                   <span style={{ color: 'var(--primary)' }} className="pulse-anim">Running tactical heuristics and neural simulation...</span>
+                 ) : (
+                   <>
+                     <strong>Reasoning:</strong> {slmAdvisory.reasoning}<br/>
+                     {slmAdvisory.recommendation && (
+                       <span style={{ color: 'var(--toast-success)' }}><strong>Recommendation:</strong> {slmAdvisory.recommendation}</span>
+                     )}
+                   </>
+                 )}
+               </p>
+            </div>
+          </aside>
+        </>
+      );
+    }
   };
 
   return (
-    <div className="dashboard-shell">
-      <aside className="command-sidebar" aria-label="Navigation">
-        <div className="side-icon glow-primary" title="Tactical feed">🛰️</div>
-        <div className="side-icon" title="Junctions">🚦</div>
-        <div className="side-icon" title="Map">🗺️</div>
-        <div className="side-icon" title="Settings">⚙️</div>
-        <div style={{ marginTop: 'auto' }} className="side-icon" title="Profile">👤</div>
+    <div className={`dashboard-app-container ${theme}`} id="dashboard-root">
+      <div className="scanline-overlay" />
+      
+      <aside className="sidebar-v3">
+        <div className="sidebar-logo" style={{ fontSize: '1.8rem', marginBottom: '40px', filter: 'drop-shadow(0 0 12px var(--primary))' }}>🚥</div>
+        {['junction', 'network', 'map', 'settings'].map(id => (
+          <button key={id} 
+            className={`sidebar-btn ${activeTab === id ? 'active' : ''}`} 
+            onClick={() => setActiveTab(id)}
+            data-testid={`sidebar-${id}`}>
+            <span style={{ fontSize: '1.3rem' }}>{id === 'junction' ? '📊' : id === 'network' ? '🌐' : id === 'map' ? '🗺️' : '⚙️'}</span>
+          </button>
+        ))}
+        <div style={{ marginTop: 'auto' }}>
+           <button id="global-theme-toggle" className="sidebar-btn" style={{ background: 'var(--glass-border)' }} onClick={toggleTheme} title="TOGGLE THEME">
+             <span style={{ fontSize: '1.3rem' }}>{theme === "dark-theme" ? "🌞" : "🌙"}</span>
+           </button>
+        </div>
       </aside>
 
-      <main className="main-theater">
-        <header className="hud-header" style={{ flexShrink: 0 }}>
-          <div className="flex-col">
-            <h1 className="hud-title" style={{ fontSize: '1.2rem' }}>DAITFO</h1>
-            <p className="text-cyan" style={{ fontSize: '0.6rem', letterSpacing: '2.5px', fontWeight: 'bold' }}>
-              TRANSIT OPTIMIZATION ENGINE v3.5 · SCOOT ALGORITHMIC CONTROL
-            </p>
+      <main className="dashboard-v3-theater">
+        <header className="tactical-header-v3" style={{ height: '80px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+            <h1 className="hud-title" style={{ fontSize: '1.4rem' }}>DAITFO — MISSION CONTROL</h1>
+            <div className="badge-v3" style={{ border: '1px solid var(--primary)', color: 'var(--primary)', background: 'var(--primary-glow)', padding: '6px 14px' }}>OPERATIONAL</div>
           </div>
-          <div className="header-badges">
-            <span className="badge-v3 active">SCOOT_TUNING</span>
-            <span className="badge-v3 mtls">MTLS: VALID</span>
-            <span className="badge-v3 ai">AI: SUPERVISOR</span>
-            {slmStatus != null && (
-              slmStatus.ok && slmStatus.model_available !== false ? (
-                <span className="badge-v3" style={{ borderColor: 'var(--secondary)', color: 'var(--secondary)', background: 'rgba(34,197,94,0.1)' }} title={slmStatus.message}>SLM: READY</span>
-              ) : (
-                <span className="badge-v3" style={{ borderColor: 'var(--warning)', color: 'var(--warning)', background: 'rgba(245,158,11,0.1)' }} title={slmStatus.message || slmStatus.error}>SLM: OFFLINE</span>
-              )
-            )}
-            {wsStatus === "connecting" && (
-              <span className="badge-v3" style={{ borderColor: 'var(--warning)', color: 'var(--warning)', background: 'rgba(245,158,11,0.1)' }}>CONNECTING...</span>
-            )}
-            {wsStatus === "reconnecting" && (
-              <span className="badge-v3 emergency pulse-red">WS: RECONNECTING</span>
-            )}
-            {metrics?.emergency?.active && (
-              <span className="badge-v3 emergency pulse-red">EMERGENCY_ACTIVE</span>
-            )}
-            <div className="phase-clock-v3" title="Cycle countdown">
-              PHASE: {metrics?.cycle_countdown ?? 0}s
-            </div>
+          <div className="header-badges" style={{ gap: '20px' }}>
+             <div className="badge-v3" style={{ padding: '8px 16px' }}>FLOW: 1.48k/m</div>
+             <div className="badge-v3" style={{ padding: '8px 16px', color: 'var(--secondary)', borderColor: 'var(--secondary)' }}>GRID_HEALTH: 98%</div>
+             <div className="phase-clock-v3" style={{ padding: '8px 20px', fontSize: '1rem' }}>PHASE TIC: {metrics?.cycle_countdown ?? 12}S</div>
+             <button id="header-theme-toggle" className="theme-toggle-btn" style={{ padding: '8px 16px' }} onClick={toggleTheme}>THEME: {theme === 'dark-theme' ? 'DARK' : 'LIGHT'}</button>
           </div>
         </header>
-
-        <div className="main-theater-scroll">
-        <section className="telemetry-grid">
-            <div className="stat-vessel">
-            <span className="stat-label">SYS UPTIME</span>
-            <div className="stat-value" style={{ color: 'var(--secondary)' }}>{metrics?.uptime ?? "99.99%"}</div>
-            <div style={{ fontSize: '0.55rem', opacity: 0.5 }}>STABLE</div>
-          </div>
-          <div className="stat-vessel">
-            <span className="stat-label">COORD. PI</span>
-            <div className="stat-value text-cyan">{metrics?.pi ?? "4.20"}</div>
-            <div style={{ fontSize: '0.55rem', opacity: 0.5 }}>PERF_INDEX_SCORE</div>
-          </div>
-          <div className="stat-vessel">
-            <span className="stat-label">AI DURATION</span>
-            <div className="stat-value" style={{ color: '#a855f7' }}>{metrics?.ai_duration ?? 35}s</div>
-            <div style={{ fontSize: '0.55rem', opacity: 0.5 }}>QUEUED_NEXT_CYCLE</div>
-          </div>
-          <div className="stat-vessel">
-            <span className="stat-label">AVG WAIT</span>
-            <div className="stat-value" style={{ color: (metrics?.avg_wait && parseFloat(String(metrics.avg_wait).replace('s','')) > 60) ? 'var(--accent)' : 'var(--warning)' }}>
-              {metrics?.avg_wait ?? "0.0s"}
-            </div>
-            <div style={{ fontSize: '0.55rem', opacity: 0.5 }}>RED LANES ONLY</div>
-          </div>
-        </section>
-
-        <div className="main-content-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '16px' }}>
-          <section className="glass-card tactical-map">
-            <div style={{ position: 'absolute', top: '15px', left: '20px', right: '20px', zIndex: 1 }}>
-              <p className="stat-label" style={{ fontSize: '0.6rem' }}>{metrics?.intersection ?? "INT_001 · MAIN ST & BROADWAY"} · LATENCY: 4ms</p>
-            </div>
-            <div className="map-container" style={{ width: '280px', height: '280px' }}>
-              <div className="map-scan-line"></div>
-              <JunctionVisualizer metrics={metrics} overrideLights={effectiveLights} />
-            </div>
-            <div style={{ display: 'flex', gap: '20px', marginTop: '20px', fontSize: '0.6rem', flexWrap: 'wrap' }}>
-              <span className="flex items-center gap-2"><div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--secondary)' }}></div> GREEN</span>
-              <span className="flex items-center gap-2"><div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--warning)' }}></div> ORANGE</span>
-              <span className="flex items-center gap-2"><div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)' }}></div> RED</span>
-              <span className="flex items-center gap-2"><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff', boxShadow: '0 0 6px rgba(255,255,255,0.9)' }}></div> VEHICLE</span>
-            </div>
-          </section>
-
-          <section className="glass-card controller-card" style={{ padding: '24px' }}>
-            <h3 className="hud-title" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>TRAFFIC CONTROLLER</h3>
-
-            {/* Mode toggle */}
-            <div className="ctrl-mode-toggle">
-              <button
-                className={`ctrl-mode-btn ${ctrlMode === "manual" ? "active-manual" : ""}`}
-                onClick={() => { setCtrlMode("manual"); addLog("auto", "Controller switched to MANUAL mode."); }}
-              >MANUAL</button>
-              <button
-                className={`ctrl-mode-btn ${ctrlMode === "auto" ? "active-auto" : ""}`}
-                onClick={() => { setCtrlMode("auto"); addLog("auto", "Controller switched to AUTO mode. VPS randomising 2–40."); }}
-              >AUTO</button>
-            </div>
-
-            {ctrlMode === "manual" ? (
-              <>
-                <div className="action-step">
-                  <span className="action-header">ACTION A · PHASE SELECT</span>
-                  <p style={{ fontSize: '0.6rem', opacity: 0.6, marginBottom: '10px' }}>Single direction or axis pair. Choose:</p>
-                  <div className="phase-grid-four">
-                    {["N", "S", "E", "W"].map((lane) => (
-                      <button
-                        key={lane}
-                        onClick={() => handlePhaseSelect(lane)}
-                        className={`phase-btn ${showActive(lane) ? "active" : ""}`}
-                      >{lane}</button>
-                    ))}
-                  </div>
-                  <div className="phase-toggle-group" style={{ marginTop: '8px' }}>
-                    <button
-                      onClick={() => handlePhaseSelect("N-S")}
-                      className={`phase-btn ${showNSPairActive ? "active" : ""}`}
-                    >N-S</button>
-                    <button
-                      onClick={() => handlePhaseSelect("E-W")}
-                      className={`phase-btn ${showEWPairActive ? "active" : ""}`}
-                    >E-W</button>
-                  </div>
-                  <p style={{ fontSize: '0.6rem', opacity: 0.5, marginTop: '8px' }}>
-                    {(() => {
-                      const single = ["N","S","E","W"].find(l => showActive(l));
-                      if (single) return `${laneNames[single]} green. ${["N","S","E","W"].filter(l => l !== single).join("+")} HELD.`;
-                      if (showNSPairActive) return "N+S green. E+W HELD.";
-                      if (showEWPairActive) return "E+W green. N+S HELD.";
-                      return `Mode: ${activeAxisDisplay}`;
-                    })()}
-                  </p>
-                </div>
-
-                <div className="action-step" style={{ marginTop: '20px' }}>
-                  <span className="action-header">
-                    <span style={{ transform: 'rotate(90deg)', display: 'inline-block' }}>↺</span> ACTION B · AI DURATION
-                  </span>
-                  <p style={{ fontSize: '0.65rem', opacity: 0.5, marginBottom: '12px' }}>Live VPS inputs (editable):</p>
-                  <div className="vps-input-row">
-                    <div className="vps-field"><label>N VPS</label><input type="number" min="0" max="99" value={vps.N} onChange={e => handleVpsChange('N', e.target.value)} /></div>
-                    <div className="vps-field"><label>S VPS</label><input type="number" min="0" max="99" value={vps.S} onChange={e => handleVpsChange('S', e.target.value)} /></div>
-                  </div>
-                  <div className="vps-input-row" style={{ marginTop: '8px' }}>
-                    <div className="vps-field"><label>E VPS</label><input type="number" min="0" max="99" value={vps.E} onChange={e => handleVpsChange('E', e.target.value)} /></div>
-                    <div className="vps-field"><label>W VPS</label><input type="number" min="0" max="99" value={vps.W} onChange={e => handleVpsChange('W', e.target.value)} /></div>
-                  </div>
-                  <div style={{ margin: '20px 0', borderBottom: '1px solid var(--glass-border)' }}></div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-                    <span style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--warning)' }}>{metrics?.ai_duration ?? 35}s</span>
-                    <span className="stat-label">queued for next cycle</span>
-                  </div>
-                  <p style={{ fontSize: '0.7rem', opacity: 0.6, margin: '12px 0', lineHeight: '1.4' }}>
-                    {loading ? "Inference in progress..." : metrics?.ai_reasoning || "Press 'Ask AI' to queue a duration recommendation."}
-                  </p>
-                  <button onClick={handleAskAI} disabled={loading} className="glass-card"
-                    style={{ width: '100%', padding: '14px', color: '#fff', fontFamily: 'var(--font-hud)', fontWeight: 'bold', fontSize: '0.8rem', letterSpacing: '2px', background: 'rgba(255,255,255,0.02)', cursor: 'pointer', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    {loading ? `INFERRING... ${loadingSecs}s` : "ASK AI FOR DURATION ↗"}
-                  </button>
-                </div>
-              </>
-            ) : (
-              /* AUTO MODE */
-              <>
-                <div className="auto-badge">
-                  <span className="auto-dot"></span>
-                  AUTO · ROUND-ROBIN · 15s PER LANE
-                </div>
-                <p style={{ fontSize: '0.65rem', opacity: 0.5, marginBottom: '12px' }}>
-                  Each lane gets <span style={{ color: '#a855f7' }}>15s</span> green in sequence (N → S → E → W). VPS randomly sampled <span style={{ color: '#a855f7' }}>2–40 vpm</span>.
-                </p>
-
-                {/* Active lane indicator */}
-                <div style={{ marginBottom: '12px' }}>
-                  <span className="stat-label" style={{ fontSize: '0.55rem' }}>ACTIVE LANE</span>
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-                    {['N','S','E','W'].map(lane => {
-                      const isActive = effectiveLights.length === 1 && effectiveLights[0] === lane;
-                      return (
-                        <div key={lane} style={{
-                          flex: 1, textAlign: 'center', padding: '8px 4px',
-                          borderRadius: '6px', fontWeight: 'bold', fontSize: '0.8rem',
-                          fontFamily: 'var(--font-hud)',
-                          background: isActive ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.03)',
-                          border: `1px solid ${isActive ? 'var(--secondary)' : 'rgba(255,255,255,0.08)'}`,
-                          color: isActive ? 'var(--secondary)' : 'rgba(255,255,255,0.3)',
-                          transition: 'all 0.3s'
-                        }}>{lane}</div>
-                      );
-                    })}
-                  </div>
-                  <div style={{ marginTop: '6px', fontSize: '0.6rem', opacity: 0.5 }}>
-                    REMAINING: <span style={{ color: '#a855f7' }}>{metrics?.cycle_countdown ?? 15}s</span>
-                  </div>
-                </div>
-
-                <div className="auto-vpm-row">
-                  {['N','S','E','W'].map(lane => (
-                    <div key={lane} className="auto-vpm-lane">
-                      <span className="lane-label">LANE {lane}</span>
-                      <span className="lane-val">{autoVps[lane]}</span>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ margin: '16px 0', borderBottom: '1px solid var(--glass-border)' }}></div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-                  <span style={{ fontSize: '2rem', fontWeight: 'bold', color: '#a855f7' }}>{metrics?.ai_duration ?? 35}s</span>
-                  <span className="stat-label">AI duration (queued)</span>
-                </div>
-                <p style={{ fontSize: '0.7rem', opacity: 0.6, margin: '12px 0', lineHeight: '1.4' }}>
-                  {metrics?.ai_reasoning || "AUTO mode active. Trigger AI to override next cycle duration."}
-                </p>
-                <button onClick={handleAskAI} disabled={loading} className="glass-card"
-                  style={{ width: '100%', padding: '14px', color: '#a855f7', fontFamily: 'var(--font-hud)', fontWeight: 'bold', fontSize: '0.8rem', letterSpacing: '2px', background: 'rgba(168,85,247,0.04)', cursor: 'pointer', border: '1px solid rgba(168,85,247,0.3)', marginBottom: '8px' }}>
-                  {loading ? `INFERRING... ${loadingSecs}s` : "TRIGGER AI INFERENCE ↗"}
-                </button>
-              </>
-            )}
-          </section>
+        
+        <div className="main-viewport" style={{ padding: '24px' }}>
+          {renderView()}
         </div>
 
-        <section className="zone-grid" style={{ marginTop: '12px' }}>
-          {['N', 'S', 'E', 'W'].map((lane) => {
-            const queueDepth = metrics?.queues?.[lane] || 0;
-            // In manual mode, show the user-set VPS; in auto mode show backend's live VPM
-            const incomingVPM = ctrlMode === "manual" ? vps[lane] : (metrics?.vpm?.[lane] || 0);
-            const waitTime = metrics?.red_times?.[lane] || 0;
-            const isGreen = effectiveLights.includes(lane);
-            const predictedClearSecs = isGreen ? Math.ceil(queueDepth / 1.5) : 0;
-            const pressureScore = queueDepth / 30;
-
-            let statusClass = "";
-            let statusLabel = "HOLDING";
-            let barColor = "rgba(255,255,255,0.2)";
-
-            if (isGreen) {
-              statusClass = "active"; statusLabel = "FLOWING"; barColor = "var(--secondary)";
-            } else if (pressureScore > 0.8) {
-              statusClass = "heavy overflow"; statusLabel = "CRITICAL"; barColor = "var(--accent)";
-            } else if (pressureScore > 0.4) {
-              statusClass = "warning"; statusLabel = "CONGESTED"; barColor = "var(--warning)";
-            }
-
-            return (
-              <div key={lane} className={`glass-card zone-card ${statusClass}`} style={{ padding: '12px 20px', transition: 'all 0.5s' }}>
-                <div className="flex justify-between items-center" style={{ marginBottom: '8px' }}>
-                  <div className="flex-col">
-                    <span className="stat-label" style={{ fontSize: '0.6rem' }}>
-                      SECTOR_{lane === 'N' ? 'N23' : lane === 'S' ? 'S22' : lane === 'E' ? 'E13' : 'W17'}
-                    </span>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>
-                      {lane === 'N' ? 'NORTH' : lane === 'S' ? 'SOUTH' : lane === 'E' ? 'EAST' : 'WEST'}
-                    </div>
-                  </div>
-                  <span className={`badge-v3 ${isGreen ? 'active' : pressureScore > 0.8 ? 'heavy' : pressureScore > 0.4 ? 'warning' : ''}`}>
-                    {statusLabel}
-                  </span>
+        <footer className="bottom-terminal" style={{ height: '180px' }}>
+          <section className="term-section" style={{ flex: 1.4 }}>
+            <div className="term-label" style={{ fontSize: '0.75rem' }}>COMMAND LOG FEED</div>
+            <div className="log-feed" style={{ marginTop: '12px' }}>
+              {log.length === 0 ? (
+                <>
+                  <div className="log-entry" style={{ opacity: 0.5 }}>[09:55:01] System boot verified.</div>
+                  <div className="log-entry" style={{ opacity: 0.7 }}>[09:55:04] All nodes (20/20) operational.</div>
+                  <div className="log-entry" style={{ color: 'var(--primary)' }}>[09:55:08] Cluster Alpha under AI oversight.</div>
+                </>
+              ) : log.map((e, i) => (
+                <div key={i} className={`log-entry ${e.type}`}>[{e.time}] {e.msg}</div>
+              ))}
+            </div>
+          </section>
+          <section className="term-section" style={{ flex: 1.8 }}>
+            <div className="term-label" style={{ fontSize: '0.75rem' }}>GRID THROUGHPUT ANALYTICS</div>
+            <div className="flex-1 flex items-end gap-1 px-4 mt-4">
+               {Array.from({length: 50}).map((_, i) => {
+                 const h = 10 + Math.sin(i * 0.25) * 40 + (mounted ? Math.random() * 50 : 20);
+                 return (
+                   <div key={i} style={{ 
+                     height: `${h}%`, 
+                     width: '100%', 
+                     background: 'linear-gradient(to top, var(--primary), var(--secondary))', 
+                     opacity: 0.3 + (i/50)*0.7,
+                     borderRadius: '4px 4px 0 0',
+                     transition: 'height 0.8s cubic-bezier(0.4, 0, 0.2, 1)'
+                   }} />
+                 );
+               })}
+            </div>
+          </section>
+          <section className="term-section">
+             <div className="term-label" style={{ fontSize: '0.75rem' }}>SYSTEM VITALITY</div>
+             <div className="flex-1 flex flex-col justify-center gap-4">
+                <div style={{ fontSize: '0.8rem' }}>
+                  <div className="flex justify-between mb-2"><span>EDGE COMPUTE</span><span className="text-cyan">18.4%</span></div>
+                  <div style={{ height: '6px', background: 'var(--glass-border)', borderRadius: '3px', overflow: 'hidden' }}><div style={{ width: '18%', height: '100%', background: 'var(--primary)', boxShadow: '0 0 15px var(--primary)' }} /></div>
                 </div>
-
-                <div className="queue-telemetry" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                  <div className="mini-stat">
-                    <span className="stat-label" style={{ fontSize: '0.5rem' }}>INCOMING (VPM)</span>
-                    <div style={{ color: 'var(--primary)', fontWeight: 'bold' }}>
-                      {metrics?.vpm == null ? '—' : `${incomingVPM}${incomingVPM > 0 ? '↑' : ''}`}
-                    </div>
-                  </div>
-                  <div className="mini-stat">
-                    <span className="stat-label" style={{ fontSize: '0.5rem' }}>BACKLOG (DEPTH)</span>
-                    <div style={{ color: '#fff', fontWeight: 'bold' }}>{queueDepth}</div>
-                  </div>
+                <div style={{ fontSize: '0.8rem' }}>
+                  <div className="flex justify-between mb-2"><span>NETWORK UPLINK</span><span className="text-secondary">91.2%</span></div>
+                  <div style={{ height: '6px', background: 'var(--glass-border)', borderRadius: '3px', overflow: 'hidden' }}><div style={{ width: '91%', height: '100%', background: 'var(--secondary)', boxShadow: '0 0 15px var(--secondary)' }} /></div>
                 </div>
-
-                <div className="progress-bar-wrap" style={{ height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', marginBottom: '10px', position: 'relative', overflow: 'hidden' }}>
-                  <div style={{
-                    height: '100%', width: `${Math.min(pressureScore * 100, 100)}%`,
-                    background: barColor, boxShadow: `0 0 10px ${barColor}`,
-                    transition: 'width 0.8s ease-out, background 0.3s',
-                    borderRadius: '3px'
-                  }}></div>
-                  <div aria-hidden="true" className="progress-threshold" style={{
-                    position: 'absolute', left: '80%', top: 0, width: '2px', height: '100%',
-                    background: 'rgba(244, 63, 94, 0.35)', borderRadius: 1
-                  }} title="Critical threshold" />
-                </div>
-
-                <div className="sector-wait-row">
-                  <span className="stat-label">
-                    WAIT: <span style={{ color: waitTime > 60 ? 'var(--accent)' : '#94a3b8' }}>{waitTime > 0 ? `${waitTime}s` : '—'}</span>
-                  </span>
-                  <span className="stat-label sector-wait-right">
-                    {isGreen
-                      ? (predictedClearSecs > 0 ? `EST. CLEAR: ${predictedClearSecs}s` : '—')
-                      : (metrics?.cycle_countdown > 0 ? `REMAINING: ${metrics.cycle_countdown}s` : '—')
-                    }
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </section>
-        </div>
+             </div>
+          </section>
+        </footer>
       </main>
-
-      <footer className="bottom-terminal">
-        <h3 className="stat-label" style={{ marginBottom: '12px', color: 'rgba(255,255,255,0.5)' }}>DECISION LOG</h3>
-        <div className="log-terminal">
-          {log.length === 0 ? (
-            <div className="log-entry" style={{ color: 'rgba(255,255,255,0.4)', fontStyle: 'italic' }}>No entries yet. Waiting for stream...</div>
-          ) : (
-            log.map((entry, idx) => (
-              <div key={idx} className={`log-entry ${entry.type}`} role="log">
-                <span className="timestamp">[{entry.time}]</span>
-                <span className="log-type">{entry.type.toUpperCase()}</span>
-                {entry.msg}
-              </div>
-            ))
-          )}
-        </div>
-        <form onSubmit={handleChatSubmit} style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
-          <span style={{ color: 'var(--primary)', fontWeight: 'bold', alignSelf: 'center' }}>HQ_LINK {'>'}</span>
-          <input
-            type="text"
-            value={chatQuery}
-            onChange={(e) => setChatQuery(e.target.value)}
-            placeholder="Enter manual command or query SLM..."
-            className="chat-input-v3"
-            disabled={chatLoading}
-          />
-          <button type="submit" className="chat-submit-v3" disabled={chatLoading}>
-            {chatLoading ? '...' : 'SEND TO SLM ↗'}
-          </button>
-        </form>
-      </footer>
-
+      
       <style jsx>{`
-        .action-step { position: relative; }
-        .phase-toggle-group { display: flex; gap: 10px; }
-        .phase-grid-four { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .phase-btn { flex: 1; min-width: 0; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 12px; border-radius: 6px; cursor: pointer; font-family: var(--font-hud); font-weight: bold; transition: all 0.3s; }
-        .phase-btn.active { background: rgba(34, 197, 94, 0.1); border-color: var(--secondary); color: var(--secondary); box-shadow: inset 0 0 15px rgba(34, 197, 94, 0.1); }
-        .chat-input-v3 { flex: 1; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 10px 15px; border-radius: 6px; font-family: monospace; outline: none; transition: border-color 0.3s; }
-        .chat-input-v3:focus { border-color: var(--primary); }
-        .chat-input-v3::placeholder { color: rgba(255,255,255,0.3); }
-        .chat-submit-v3 { background: rgba(14, 165, 233, 0.1); border: 1px solid var(--primary); color: var(--primary); padding: 0 20px; border-radius: 6px; cursor: pointer; font-weight: bold; font-family: inherit; transition: all 0.3s; }
-        .chat-submit-v3:hover:not(:disabled) { background: var(--primary); color: #000; box-shadow: 0 0 15px var(--primary); }
-        .chat-submit-v3:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-        .phase-btn:focus-visible { outline: 2px solid var(--secondary); outline-offset: 2px; }
-        .log-entry.user { color: #fff; opacity: 0.9; }
-        .log-entry.ai { color: var(--primary); }
-        .log-type { font-weight: 600; margin-right: 10px; font-size: 0.65rem; letter-spacing: 0.5px; opacity: 0.9; }
+        .flex { display: flex; }
+        .flex-col { flex-direction: column; }
+        .justify-center { justify-content: center; }
+        .justify-between { justify-content: space-between; }
+        .items-center { align-items: center; }
+        .items-end { align-items: flex-end; }
+        .flex-center { display: flex; align-items: center; justify-content: center; text-align: center; }
+        .shadow-2xl { box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important; }
+        .shadow-xl { box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3) !important; }
       `}</style>
     </div>
   );

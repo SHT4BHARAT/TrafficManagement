@@ -43,3 +43,13 @@ checkpoint-*/
 project/brain/models/TrafficAgent/
 project/brain/models/ollama/
 runs/
+
+# Model weights
+*.pt
+
+# Binary presentation artifacts
+*.pdf
+*.pptx
+
+# Graphify output
+graphify-out/

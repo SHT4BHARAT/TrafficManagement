@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        working-directory: ./project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio httpx
+
+      - name: Lint with ruff
+        working-directory: ./project
+        run: |
+          pip install ruff
+          ruff check .
+
+      - name: Run unit tests
+        working-directory: ./project
+        run: |
+          python -m pytest tests/test_simulation.py -v --tb=short
+
+      - name: Run API tests
+        working-directory: ./project
+        run: |
+          python -m pytest tests/test_api.py -v --tb=short
+        env:
+          DAITFO_API_KEY: ci-test-key
+          ADMIN_API_KEY: ci-admin-key

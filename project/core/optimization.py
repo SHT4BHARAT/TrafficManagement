@@ -20,7 +20,7 @@ class SCOOTController:
         total_wait = sum(red_times.values())
         return w1 * total_queue + w2 * total_wait
 
-    def optimize_splits(self, active_phase: str, sensor_data: dict) -> int:
+    def optimize_splits(self, active_phase: str, sensor_data: dict, database_client=None) -> int:
         """
         active_phase: 'NS' or 'EW'
         Try current, +step, and -step. Return best green duration.
@@ -28,9 +28,9 @@ class SCOOTController:
         current_val = self.current_splits[active_phase]
         
         # Candidate evaluations
-        pi_hold = self._simulate_pi(active_phase, current_val, sensor_data)
-        pi_plus = self._simulate_pi(active_phase, current_val + self.step, sensor_data)
-        pi_minus = self._simulate_pi(active_phase, current_val - self.step, sensor_data)
+        pi_hold = self._simulate_pi(active_phase, current_val, sensor_data, database_client)
+        pi_plus = self._simulate_pi(active_phase, current_val + self.step, sensor_data, database_client)
+        pi_minus = self._simulate_pi(active_phase, current_val - self.step, sensor_data, database_client)
 
         # Pick best
         results = [
@@ -45,22 +45,50 @@ class SCOOTController:
         self.performance_index = best_pi
         return new_val
 
-    def _simulate_pi(self, phase_id, green_time, sensor_data) -> float:
+    def _simulate_pi(self, phase_id, green_time, sensor_data, database_client=None) -> float:
         """Predictive PI for a given green time"""
         # Get lanes in this phase
         lanes = ["N", "S"] if phase_id == "NS" else ["E", "W"]
         
+        hist_queue_avg = 0.0
+        if database_client is not None:
+            metrics = database_client.get_recent_metrics("INT_001", limit=10)
+            if metrics:
+                hist_queue_avg = sum(m.get("avg_queue", 0) for m in metrics) / len(metrics)
+                
+        congestion_factor = 1.0
+        try:
+            from edge.tomtom_scraper import TomTomDelhiScraper
+            scraper = TomTomDelhiScraper()
+            stats = scraper.fetch_live_stats()
+            if stats:
+                congestion_str = stats.get("live_congestion", "0%")
+                congestion_pct = float(congestion_str.replace("%", "").strip())
+                if congestion_pct > 30:
+                    congestion_factor = 1.0 + (congestion_pct - 30) / 100.0
+                
+                speed_str = stats.get("live_speed", "40 km/h")
+                speed_val = float(speed_str.split()[0])
+                if speed_val < 30:
+                    congestion_factor *= (30 / max(5, speed_val))
+        except Exception:
+            pass
+
         predicted_pi = 0
+        history_weight = 0.3
         for l in lanes:
             q = sensor_data.get("queues", {}).get(l, 0)
             vpm = sensor_data.get("vpm", {}).get(l, 10)
             # Simple model: arrivals - departures
-            arrivals = vpm / 60.0 * 30 # vehicles arriving in 30s
+            arrivals = (vpm / 60.0 * 30) * congestion_factor # vehicles arriving in 30s adjusted by congestion
             departures = green_time * 1.5 # ~1.5 veh/sec clearing
             residual = max(0, q + arrivals - departures)
+            if hist_queue_avg > 0:
+                residual = (1 - history_weight) * residual + history_weight * hist_queue_avg
             predicted_pi += residual
             
         return predicted_pi
+
 
 class GeneticSignalOptimizer:
     """

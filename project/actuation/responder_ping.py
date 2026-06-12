@@ -15,22 +15,30 @@ class EmergencyResponderApp:
         """
         Sends an emergency ping to the city AI.
         """
+        import os
         payload = {
             "device_id": self.device_id,
-            "type": "EMERGENCY_VEHICLE",
             "start": start_node,
             "end": end_node,
-            "timestamp": time.time()
+        }
+        headers = {
+            "X-API-Key": os.getenv("ADMIN_API_KEY", os.getenv("DAITFO_API_KEY", "unsecured"))
         }
         print(f"[APP] {self.device_id} -> Pinging for Corridor: {start_node} to {end_node}")
         
-        # In this simulation, we'll hit our FastAPI backend
         try:
-            # response = requests.post(f"{self.backend_url}/api/emergency", json=payload)
-            # if response.status_code == 200: print("[APP] Request Accepted. Corridor Activating.")
-            print("[APP] Request transmitted via mTLS mesh. Syncing with Graph Router...")
+            response = requests.post(
+                f"{self.backend_url}/api/emergency/request",
+                json=payload,
+                headers=headers
+            )
+            if response.status_code == 200:
+                print(f"[APP] Request Accepted: {response.json().get('message')}")
+            else:
+                print(f"[APP] Server returned {response.status_code}: {response.text}")
         except Exception as e:
             print(f"[APP] Connection Failed: {e}")
+
 
 if __name__ == "__main__":
     app = EmergencyResponderApp()

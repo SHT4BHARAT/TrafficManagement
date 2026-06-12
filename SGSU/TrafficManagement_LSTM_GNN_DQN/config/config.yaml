@@ -1,0 +1,32 @@
+# config/config.yaml
+# India Left-Hand Drive — 5-Phase Traffic Management
+
+simulation:
+  sumo_cmd: "C:\\Program Files (x86)\\Eclipse\\Sumo\\bin\\sumo.exe"
+  net_file: "data/network.net.xml"
+  route_file: "data/routes.rou.xml"
+  max_steps: 3600
+  warmup_steps: 100
+
+training:
+  batch_size: 32
+  hidden_size: 64
+  sequence_len: 10
+  input_size: 9           # 4 total queues + 4 right-turn queues + 1 ped
+  epochs: 20
+  device: "cpu"
+  checkpoint_dir: "checkpoints/"
+  log_dir: "logs/"
+
+dqn:
+  policy: "MlpPolicy"
+  learning_rate: 0.001
+  buffer_size: 10000
+  batch_size: 32
+  action_space: 5          # N, S, E, W, Pedestrian
+  total_timesteps: 30000   # Local. Colab: 100000
+  device: "cpu"
+
+bitnet:
+  cwd: "D:\\BitNet\\BitNet"
+  inference_script: "run_inference.py"

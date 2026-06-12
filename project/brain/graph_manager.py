@@ -1,14 +1,15 @@
 import logging
+import os
 
 class TrafficGraphManager:
     """
     Manages interaction with the Neo4j Graph Database.
     Used for complex city-level routing and emergency planning.
     """
-    def __init__(self, uri="bolt://localhost:7687", user="neo4j", password="password"):
-        self.uri = uri
-        self.user = user
-        self.password = password
+    def __init__(self, uri=None, user=None, password=None):
+        self.uri = uri or os.getenv("NEO4J_URI", "bolt://localhost:7687")
+        self.user = user or os.getenv("NEO4J_USER", "neo4j")
+        self.password = password or os.getenv("NEO4J_PASS", "")
         self.driver = None # Will hold neo4j.GraphDatabase.driver
         logging.info("[BRAIN] Graph Manager initialized (Neo4j Ready)")
 
@@ -29,8 +30,11 @@ class TrafficGraphManager:
         Returns the optimized path for an emergency responder.
         """
         print(f"[GRAPH] Calculating optimized route from {start_id} to {end_id}...")
-        # Mocking return
-        return ["INT_001", "INT_002", "INT_004"]
+        from brain.routing import CityGraphRouter
+        router = CityGraphRouter()
+        path, cost = router.find_emergency_path(start_id, end_id)
+        return path
+
 
 if __name__ == "__main__":
     manager = TrafficGraphManager()

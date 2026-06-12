@@ -1,14 +1,17 @@
 # [Dockerfile.edge] Base Image for Edge AI Nodes
-FROM python:3.9-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 COPY requirements.txt .
+
+# OpenCV requires specific libGL libraries
+RUN apt-get update && apt-get install -y libgl1-mesa-glx libglib2.0-0 && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir -r requirements.txt
 
 # In a real Jetson, we would pull from nvcr.io/nvidia/deepstream
 # and install TensorRT. For emulation, we use standard Python.
-COPY edge/vision_node.py .
-COPY core/data_bus.py .
-COPY core/config.py .
+COPY edge/ ./edge/
+COPY core/ ./core/
+COPY simulation/ ./simulation/
 
-CMD ["python", "vision_node.py"]
+CMD ["python", "edge/vision_node.py"]

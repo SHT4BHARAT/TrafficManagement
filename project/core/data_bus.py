@@ -1,6 +1,6 @@
 import json
 import logging
-from .config import KafkaConfig
+from core.config import KafkaConfig
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

@@ -10,7 +10,13 @@ services:
       - INTERSECTION_ID=INT_001
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # 2. Data Orchestration Layer
   kafka:
@@ -25,6 +31,15 @@ services:
       - --reserve-memory 0M
       - --node-id 0
       - --check=false
+      - --kafka-addr 0.0.0.0:9092
+      - --rpc-addr 0.0.0.0:33145
+      - --advertise-kafka-addr kafka:9092
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "info"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # 3. AI Brain (The Optimizer & Graph Router)
   brain-optimizer:
@@ -34,7 +49,8 @@ services:
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
 
   # 4. City Operator Dashboard (Frontend)
   dashboard-ui:
@@ -44,6 +60,12 @@ services:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://backend-api:8000
+      - NEXT_PUBLIC_DAITFO_API_KEY=${DAITFO_API_KEY}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # 5. Backend API Gateway
   backend-api:
@@ -53,4 +75,72 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # 6. Persistence & Analytics (Layer 4)
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg14
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  neo4j:
+    image: neo4j:latest
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASS:-neo4j}
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "${NEO4J_PASS:-neo4j}", "RETURN 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # 7. TLS Termination (production only)
+  caddy:
+    image: caddy:alpine
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - backend-api
+      - dashboard-ui
+
+volumes:
+  caddy_data:

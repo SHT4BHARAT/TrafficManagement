@@ -1,0 +1,10 @@
+pyyaml==6.0.1
+torch>=2.0.0
+torchvision
+torchaudio
+torch-geometric
+gym==0.26.2
+numpy>=1.24.0
+stable-baselines3
+traci
+sumolib
